@@ -41,7 +41,14 @@ async function main(): Promise<void> {
   if (!cmd || cmd === '--help' || cmd === '-h') {
     process.stdout.write(
       'Usage:\n' +
-      '  memory-pkg setup [--docker] [--dry-run] [--force]\n' +
+      '\n' +
+      'Setup & lifecycle:\n' +
+      '  memory-pkg init [--local] [--docker] [--classifier-context]\n' +
+      '  memory-pkg upgrade [--plan] [--confirm]    (Phase B — not yet implemented)\n' +
+      '  memory-pkg status                          Show install state and drift\n' +
+      '  memory-pkg uninstall --confirm             Remove managed files and state\n' +
+      '\n' +
+      'Memory operations:\n' +
       '  memory-pkg schema                              (init/migrate the hypertable + indexes)\n' +
       '  memory-pkg ingest                              (flush buffer.jsonl to TimescaleDB)\n' +
       '  memory-pkg search <query> [--limit N] [--session ID] [--type TYPE] [--since ISO]\n' +
@@ -53,8 +60,9 @@ async function main(): Promise<void> {
       '  memory-pkg rationale [--session ID] [--limit N]   (uses local `claude` CLI)\n' +
       '  memory-pkg inject <prompt-text> [--session ID] [--limit N] [--transcript PATH]\n' +
       '  memory-pkg tune [--log PATH]                      (summarize rationale log)\n' +
-      '  memory-pkg --version                              (print package version)\n' +
-      '  memory-pkg --help                                 (this message)\n'
+      '\n' +
+      '  memory-pkg --version                              Print package version\n' +
+      '  memory-pkg --help                                 This message\n'
     );
     return;
   }
@@ -72,10 +80,40 @@ async function main(): Promise<void> {
 
   try {
     switch (cmd) {
-      case 'setup': {
-        const { runSetup } = await import('./setup.js');
-        await runSetup([arg, ...rest].filter(Boolean));
+      case 'init': {
+        const { runInit } = await import('./init.js');
+        await runInit([arg, ...rest].filter(Boolean));
         break;
+      }
+
+      case 'setup': {
+        // Deprecated alias for init. Kept for back-compat through the 0.x cycle.
+        process.stderr.write(
+          `[memory-pkg] 'setup' is a deprecated alias; use 'init' instead.\n`,
+        );
+        const { runInit } = await import('./init.js');
+        await runInit([arg, ...rest].filter(Boolean));
+        break;
+      }
+
+      case 'status': {
+        const { runStatus } = await import('./status.js');
+        await runStatus([arg, ...rest].filter(Boolean));
+        break;
+      }
+
+      case 'uninstall': {
+        const { runUninstall } = await import('./uninstall.js');
+        await runUninstall([arg, ...rest].filter(Boolean));
+        break;
+      }
+
+      case 'upgrade': {
+        // Phase B — implementation lands separately. Stub until then.
+        process.stderr.write(
+          `[memory-pkg] 'upgrade' is not implemented yet. Run 'init --force' to re-apply templates.\n`,
+        );
+        process.exit(1);
       }
       case 'search':
         if (!arg) throw new Error('query required');
