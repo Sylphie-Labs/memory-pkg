@@ -36,6 +36,7 @@ import {
   type InstallState,
   type ManagedFile,
 } from '../upgrade/state.js';
+import { defaultUserConfig, getConfigRelPath } from '../config.js';
 
 type Flags = {
   dryRun: boolean;
@@ -294,6 +295,17 @@ function printSettingsSnippet(): void {
   process.stdout.write(JSON.stringify(snippet, null, 2) + '\n\n');
 }
 
+function installUserConfig(cwd: string, flags: Flags, managed: ManagedFile[]): void {
+  const destRel = getConfigRelPath();
+  const destPath = path.join(cwd, destRel);
+  const content = JSON.stringify(defaultUserConfig(), null, 2) + '\n';
+  const result = writeFileContent(destPath, content, flags);
+  process.stdout.write(`[init] config: ${result} ${destRel}\n`);
+  if (result === 'wrote' || (result === 'skipped' && fs.existsSync(destPath))) {
+    managed.push({ path: destRel, installedHash: hashFile(destPath) });
+  }
+}
+
 function installClassifierContext(cwd: string, flags: Flags, managed: ManagedFile[]): void {
   const destRel = normalizePath(path.join('.memory-pkg', 'classifier-context.md'));
   const destPath = path.join(cwd, destRel);
@@ -365,6 +377,8 @@ function printNextSteps(pm: string, mode: InstallMode, didDocker: boolean): void
     process.stdout.write(`  ${n++}. memory-pkg schema\n`);
   }
   process.stdout.write(`  ${n++}. Start a Claude Code session; capture, ingest, and injection are wired\n`);
+  process.stdout.write(`\nModel choices for \`claude -p\` spawns live in .memory-pkg/config.json (override via\n`);
+  process.stdout.write(`MEMORY_PKG_{RATIONALE,CLASSIFY,RERANK}_MODEL env vars).\n`);
   process.stdout.write(`\nInstall mode: ${mode}${pm !== 'unknown' ? `   |   package manager: ${pm}` : ''}\n`);
 }
 
@@ -393,6 +407,7 @@ export async function runInit(args: string[]): Promise<number> {
   if (runHooks) installHooks(cwd, flags, managed);
   if (runMcp) installMcp(cwd, flags, managed);
   if (runSkills) installSkills(cwd, flags, managed);
+  installUserConfig(cwd, flags, managed);
   if (flags.classifierContext) installClassifierContext(cwd, flags, managed);
   if (flags.docker) installDocker(cwd, flags, managed);
 

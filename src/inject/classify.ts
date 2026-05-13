@@ -19,21 +19,21 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { runQuery } from '../timescale-client.js';
+import { getModelFor } from '../config.js';
 import { DiskTTLCache, hashPrompt } from './cache.js';
 
-const MODEL = process.env.DRIFT_MEMORY_CLASSIFY_MODEL || 'claude-haiku-4-5-20251001';
 const CLAUDE_BIN = process.env.MEMORY_PKG_CLAUDE_BIN || 'claude';
 // Non-bare claude has 1.5-3s of startup overhead on top of the model call.
 // Default 12s gives comfortable headroom for Haiku; classifier tier will cap
 // overall latency lower via its own fallback if needed.
-const TIMEOUT_MS = parseInt(process.env.DRIFT_MEMORY_CLASSIFY_TIMEOUT_MS || '12000', 10);
+const TIMEOUT_MS = parseInt(process.env.MEMORY_PKG_CLASSIFY_TIMEOUT_MS || '12000', 10);
 
 // 24h default — classifier output rarely rots (intent/entities are stable;
 // file paths self-heal via validateFiles; subsystem staleness is handled by
 // keying the cache on (prompt + subsystem-list), so re-ingestion naturally
-// invalidates). Override via DRIFT_MEMORY_CLASSIFIER_CACHE_TTL_MS.
+// invalidates). Override via MEMORY_PKG_CLASSIFIER_CACHE_TTL_MS.
 const CACHE_TTL_MS = parseInt(
-  process.env.DRIFT_MEMORY_CLASSIFIER_CACHE_TTL_MS || String(24 * 60 * 60 * 1000),
+  process.env.MEMORY_PKG_CLASSIFIER_CACHE_TTL_MS || String(24 * 60 * 60 * 1000),
   10,
 );
 const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
@@ -159,7 +159,7 @@ function callClaudeCli(prompt: string, timeoutMs: number): Promise<string> {
     // See rerank.ts for the detailed spawn rationale. Summary: non-bare mode
     // keeps Max OAuth; setting-sources/strict-mcp/disable-slash-commands
     // trim startup; tmpdir cwd avoids project-hook recursion.
-    const cmd = `${CLAUDE_BIN} -p --model ${MODEL} --setting-sources user --strict-mcp-config --disable-slash-commands --exclude-dynamic-system-prompt-sections`;
+    const cmd = `${CLAUDE_BIN} -p --model ${getModelFor('classify')} --setting-sources user --strict-mcp-config --disable-slash-commands --exclude-dynamic-system-prompt-sections`;
     const proc = spawn(cmd, {
       shell: true,
       cwd: os.tmpdir(),

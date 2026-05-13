@@ -18,6 +18,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { detectDrift, readState } from '../upgrade/state.js';
 import { compareVersions } from '../upgrade/runner.js';
+import { getModelFor } from '../config.js';
 
 type CheckResult = { name: string; status: 'pass' | 'warn' | 'fail'; message: string };
 
@@ -135,6 +136,17 @@ async function checkHookSyntax(cwd: string): Promise<CheckResult> {
   return { name: 'hooks', status: 'fail', message: failures.join('; ') };
 }
 
+async function checkClaudeSpawnModels(cwd: string): Promise<CheckResult> {
+  const rationale = getModelFor('rationale', cwd);
+  const classify = getModelFor('classify', cwd);
+  const rerank = getModelFor('rerank', cwd);
+  return {
+    name: 'claude -p models',
+    status: 'pass',
+    message: `rationale=${rationale}  classify=${classify}  rerank=${rerank}`,
+  };
+}
+
 async function checkTimescale(): Promise<CheckResult> {
   const host = process.env.MEMORY_PKG_PG_HOST ?? 'localhost';
   const port = parseInt(process.env.MEMORY_PKG_PG_PORT ?? '5432', 10);
@@ -179,6 +191,7 @@ export async function runDoctor(args: string[]): Promise<number> {
     () => checkManagedFiles(cwd),
     () => checkMcpStanza(cwd),
     () => checkHookSyntax(cwd),
+    () => checkClaudeSpawnModels(cwd),
   ];
   if (!noNetwork) checks.push(() => checkTimescale());
 

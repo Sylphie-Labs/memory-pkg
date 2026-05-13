@@ -20,12 +20,12 @@
 
 import { spawn } from 'child_process';
 import * as os from 'os';
+import { getModelFor } from '../config.js';
 
-const MODEL = process.env.DRIFT_MEMORY_RERANK_MODEL || 'claude-haiku-4-5-20251001';
 const CLAUDE_BIN = process.env.MEMORY_PKG_CLAUDE_BIN || 'claude';
 // Non-bare claude has 1.5-3s of startup overhead on top of the model call.
 // Default 10s gives headroom; passthrough fires on timeout.
-const TIMEOUT_MS = parseInt(process.env.DRIFT_MEMORY_RERANK_TIMEOUT_MS || '10000', 10);
+const TIMEOUT_MS = parseInt(process.env.MEMORY_PKG_RERANK_TIMEOUT_MS || '10000', 10);
 
 export interface RerankInput {
   excerpt: string;
@@ -92,7 +92,7 @@ function callClaudeCli(prompt: string, timeoutMs: number): Promise<string> {
     // - --disable-slash-commands skips skills loading.
     // - cwd=tmpdir is belt-and-suspenders against project detection.
     // Single-string command avoids Node 22's shell:true+args deprecation.
-    const cmd = `${CLAUDE_BIN} -p --model ${MODEL} --setting-sources user --strict-mcp-config --disable-slash-commands --exclude-dynamic-system-prompt-sections`;
+    const cmd = `${CLAUDE_BIN} -p --model ${getModelFor('rerank')} --setting-sources user --strict-mcp-config --disable-slash-commands --exclude-dynamic-system-prompt-sections`;
     const proc = spawn(cmd, {
       shell: true,
       cwd: os.tmpdir(),

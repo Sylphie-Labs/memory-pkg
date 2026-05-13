@@ -14,8 +14,8 @@
 
 import { spawn } from 'child_process';
 import { runQuery } from '../timescale-client.js';
+import { getModelFor } from '../config.js';
 
-const MODEL = process.env.MEMORY_PKG_RATIONALE_MODEL ?? 'claude-haiku-4-5-20251001';
 const CLAUDE_BIN = process.env.MEMORY_PKG_CLAUDE_BIN ?? 'claude';
 
 interface TurnEvent {
@@ -157,7 +157,7 @@ async function callClaudeCli(prompt: string, timeoutMs = 60_000): Promise<string
   return new Promise<string>((resolve, reject) => {
     // `-p` = print (one-shot, non-interactive). `--model` selects Haiku.
     // Prompt passes via stdin so we avoid shell-quoting issues with multi-line content.
-    const proc = spawn(CLAUDE_BIN, ['-p', '--model', MODEL], {
+    const proc = spawn(CLAUDE_BIN, ['-p', '--model', getModelFor('rationale')], {
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -222,7 +222,7 @@ async function insertRationale(turn: Turn, rationale: string): Promise<void> {
       JSON.stringify({
         rationale,
         source_user_prompt_id: turn.userPromptId,
-        model: MODEL,
+        model: getModelFor('rationale'),
         synthesized_at: new Date().toISOString(),
       }),
       transcriptUuid,
