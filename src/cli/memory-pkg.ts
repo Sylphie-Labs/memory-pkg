@@ -44,7 +44,7 @@ async function main(): Promise<void> {
       '\n' +
       'Setup & lifecycle:\n' +
       '  memory-pkg init [--local] [--docker] [--classifier-context]\n' +
-      '  memory-pkg upgrade [--plan] [--confirm]    (Phase B — not yet implemented)\n' +
+      '  memory-pkg upgrade [--plan] [--confirm] [--force]   Bring repo to current version\n' +
       '  memory-pkg status                          Show install state and drift\n' +
       '  memory-pkg uninstall --confirm             Remove managed files and state\n' +
       '\n' +
@@ -109,11 +109,9 @@ async function main(): Promise<void> {
       }
 
       case 'upgrade': {
-        // Phase B — implementation lands separately. Stub until then.
-        process.stderr.write(
-          `[memory-pkg] 'upgrade' is not implemented yet. Run 'init --force' to re-apply templates.\n`,
-        );
-        process.exit(1);
+        const { runUpgrade } = await import('./upgrade.js');
+        await runUpgrade([arg, ...rest].filter(Boolean));
+        break;
       }
       case 'search':
         if (!arg) throw new Error('query required');
