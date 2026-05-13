@@ -14,13 +14,13 @@
   ],
   "license": "SEE LICENSE IN LICENSE",
   "author": "Jim Tisdale",
-  "homepage": "https://github.com/jctisdale/memory-pkg#readme",
+  "homepage": "https://github.com/sylphie-labs/memory-pkg#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jctisdale/memory-pkg.git"
+    "url": "git+https://github.com/sylphie-labs/memory-pkg.git"
   },
   "bugs": {
-    "url": "https://github.com/jctisdale/memory-pkg/issues"
+    "url": "https://github.com/sylphie-labs/memory-pkg/issues"
   },
   "type": "module",
   "engines": {
