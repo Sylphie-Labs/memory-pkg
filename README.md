@@ -18,37 +18,67 @@ If you have a use case and want clarity on whether it's permitted, open an issue
 
 ## Install
 
+Two install modes.
+
+**Global** (recommended for solo dev / cross-repo use):
+
 ```bash
-npm install --save-dev @anthrorg-infra/memory-pkg
-# or
-pnpm add -D @anthrorg-infra/memory-pkg
-# or
-yarn add -D @anthrorg-infra/memory-pkg
+npm install -g @anthrorg-infra/memory-pkg
 ```
 
-You'll also need TimescaleDB (with `pgvector`). The setup command can write a `docker-compose.memory-pkg.yml` for you, or use any TimescaleDB instance you already have.
+**Local** (recommended for teams who want version pinning):
+
+```bash
+npm install --save-dev @anthrorg-infra/memory-pkg
+```
+
+You'll also need TimescaleDB (with `pgvector`). `init --docker` writes a `docker-compose.memory-pkg.yml` for you, or use any TimescaleDB instance you already have.
 
 ## Quickstart
 
 ```bash
-# 1. Install package
-npm install --save-dev @anthrorg-infra/memory-pkg
+# 1. Install (global)
+npm install -g @anthrorg-infra/memory-pkg
 
-# 2. Run the setup command from your repo root
-npx memory-pkg setup --docker
+# 2. From your repo root
+memory-pkg init --docker
 
 # 3. Bring up TimescaleDB
 docker compose -f docker-compose.memory-pkg.yml up -d
 
-# 4. Initialize the schema
-npx memory-pkg schema
+# 4. Merge the printed settings.json snippet into .claude/settings.json
 
-# 5. Start a Claude Code session — capture, ingest, and injection are now wired
+# 5. Initialize the schema
+memory-pkg schema
+
+# 6. Start a Claude Code session — capture, ingest, and injection are now wired
 ```
 
-`setup` installs the capture and injection hook scripts into `.claude/hooks/`, patches your `.mcp.json` with the memory-pkg MCP server stanza, copies the `temporal-recall` skill template into `.claude/skills/`, and writes a `.memory-pkg/classifier-context.md` stub if you plan to enable the classifier tier later.
+`init` installs the capture and injection hooks into `.claude/hooks/`, patches `.mcp.json` with the MCP server stanza, copies the `temporal-recall` skill template into `.claude/skills/`, and writes the install state to `.memory-pkg/state.json` so `upgrade`, `status`, and `uninstall` can operate later.
 
-Hook scripts are generated to match your detected package manager (npm/pnpm/yarn/bun).
+The `memory-inject.cjs` hook is rendered with the package's absolute path baked in as a fallback. The hook tries (1) `MEMORY_PKG_CLI_PATH` env var, (2) local `node_modules`, (3) the baked path — and fails open if none resolve. Re-run `init --force` after a global Node reinstall.
+
+## Lifecycle
+
+```bash
+memory-pkg init       [--local] [--docker] [--classifier-context] [--force] [--dry-run]
+memory-pkg upgrade    [--plan] [--confirm] [--force]
+memory-pkg status                                # show install state + drift
+memory-pkg doctor     [--no-network]             # structural checks
+memory-pkg uninstall  --confirm
+```
+
+**`init`** is one-time per repo. Writes a state file that subsequent commands read.
+
+**`upgrade`** walks the migration graph from `state.version` to the currently-installed CLI version. Always shows the plan first; `--confirm` required to apply. Drifted files (modified since install) are skipped with a warning unless `--force` (which creates `.bak.<timestamp>` backups).
+
+**`status`** is a quick drift report.
+
+**`doctor`** runs six structural checks: state file present, version matches, managed files present, MCP stanza registered, hooks parse cleanly, TimescaleDB reachable.
+
+**`uninstall`** removes every file recorded in `state.json` with `--confirm`. Modified files are backed up to `.bak.<timestamp>` unless `--force`.
+
+> `setup` is a deprecated alias for `init` and will be removed before 1.0.
 
 ## How it works
 
@@ -99,24 +129,31 @@ Run on demand:
 npx memory-pkg rationale --limit 50
 ```
 
-## CLI
+## CLI reference
 
 ```bash
-npx memory-pkg setup                  # one-time consumer setup
-npx memory-pkg schema                 # create/update the hypertable + indexes
-npx memory-pkg ingest                 # flush buffer.jsonl to TimescaleDB
-npx memory-pkg search "<query>"       # fuzzy search the memory store
-npx memory-pkg context <eventId>      # scale around an event
-npx memory-pkg unwind <eventId>       # replay session up to an event
-npx memory-pkg timeline <sessionId>   # full session dump
-npx memory-pkg rationale              # synthesize turn rationales
-npx memory-pkg backfill-subsystems    # re-derive subsystem tags
-npx memory-pkg backfill-embeddings    # compute embeddings for legacy rows
-npx memory-pkg inject "<prompt>"      # dry-run the injection pipeline
-npx memory-pkg tune                   # summarize the rationale-log telemetry
+# Lifecycle
+memory-pkg init        [--local] [--docker] [--classifier-context] [--force] [--dry-run]
+memory-pkg upgrade     [--plan] [--confirm] [--force] [--verbose]
+memory-pkg status
+memory-pkg doctor      [--no-network]
+memory-pkg uninstall   --confirm [--force] [--dry-run]
+
+# Memory operations
+memory-pkg schema                 # create/update the hypertable + indexes
+memory-pkg ingest                 # flush buffer.jsonl to TimescaleDB
+memory-pkg search "<query>"       # fuzzy search the memory store
+memory-pkg context <eventId>      # scale around an event
+memory-pkg unwind <eventId>       # replay session up to an event
+memory-pkg timeline <sessionId>   # full session dump
+memory-pkg rationale              # synthesize turn rationales
+memory-pkg backfill-subsystems    # re-derive subsystem tags
+memory-pkg backfill-embeddings    # compute embeddings for legacy rows
+memory-pkg inject "<prompt>"      # dry-run the injection pipeline
+memory-pkg tune                   # summarize the rationale-log telemetry
 ```
 
-`npx memory-pkg-mcp` runs the MCP server directly (Claude Code launches this for you via `.mcp.json`).
+`memory-pkg-mcp` runs the MCP server directly (Claude Code launches it for you via `.mcp.json`).
 
 ## Configuration
 
