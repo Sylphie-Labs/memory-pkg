@@ -51,8 +51,8 @@
     }
   },
   "bin": {
-    "memory-pkg": "./dist/cli/memory-pkg.js",
-    "memory-pkg-mcp": "./dist/mcp-server/index.js"
+    "memory-pkg": "dist/cli/memory-pkg.js",
+    "memory-pkg-mcp": "dist/mcp-server/index.js"
   },
   "files": [
     "dist/",

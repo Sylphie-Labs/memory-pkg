@@ -1,5 +1,6 @@
+#!/usr/bin/env node
 /**
- * memory.ts -- CLI wrapper around the MCP tools. Run via `pnpm memory <cmd>`.
+ * memory-pkg.ts -- CLI dispatcher for memory-pkg.
  *
  * Commands:
  *   search <query> [--limit N] [--session ID] [--type TYPE] [--since ISO]

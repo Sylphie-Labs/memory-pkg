@@ -1,5 +1,6 @@
+#!/usr/bin/env node
 /**
- * index.ts -- MCP server entry point for @drift/memory-pkg.
+ * index.ts -- MCP server entry point for @sylphie-labs/memory-pkg.
  *
  * Exposes long-term session memory to Claude Code via stdio:
  *   searchMemory         — fuzzy text match across event log
