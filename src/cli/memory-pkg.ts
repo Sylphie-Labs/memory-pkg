@@ -46,6 +46,7 @@ async function main(): Promise<void> {
       '  memory-pkg init [--local] [--docker] [--classifier-context]\n' +
       '  memory-pkg upgrade [--plan] [--confirm] [--force]   Bring repo to current version\n' +
       '  memory-pkg status                          Show install state and drift\n' +
+      '  memory-pkg doctor [--no-network]           Run structural checks\n' +
       '  memory-pkg uninstall --confirm             Remove managed files and state\n' +
       '\n' +
       'Memory operations:\n' +
@@ -111,6 +112,13 @@ async function main(): Promise<void> {
       case 'upgrade': {
         const { runUpgrade } = await import('./upgrade.js');
         await runUpgrade([arg, ...rest].filter(Boolean));
+        break;
+      }
+
+      case 'doctor': {
+        const { runDoctor } = await import('./doctor.js');
+        const code = await runDoctor([arg, ...rest].filter(Boolean));
+        if (code !== 0) process.exit(code);
         break;
       }
       case 'search':
