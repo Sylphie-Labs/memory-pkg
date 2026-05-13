@@ -1,4 +1,4 @@
-# @anthrorg-infra/memory-pkg
+# @sylphie-labs/memory-pkg
 
 **Long-term session memory for Claude Code.**
 
@@ -23,13 +23,13 @@ Two install modes.
 **Global** (recommended for solo dev / cross-repo use):
 
 ```bash
-npm install -g @anthrorg-infra/memory-pkg
+npm install -g @sylphie-labs/memory-pkg
 ```
 
 **Local** (recommended for teams who want version pinning):
 
 ```bash
-npm install --save-dev @anthrorg-infra/memory-pkg
+npm install --save-dev @sylphie-labs/memory-pkg
 ```
 
 You'll also need TimescaleDB (with `pgvector`). `init --docker` writes a `docker-compose.memory-pkg.yml` for you, or use any TimescaleDB instance you already have.
@@ -38,7 +38,7 @@ You'll also need TimescaleDB (with `pgvector`). `init --docker` writes a `docker
 
 ```bash
 # 1. Install (global)
-npm install -g @anthrorg-infra/memory-pkg
+npm install -g @sylphie-labs/memory-pkg
 
 # 2. From your repo root
 memory-pkg init --docker
@@ -181,4 +181,4 @@ Legacy `DRIFT_MEMORY_*` env vars are still recognized for retrieval-tier toggles
 
 ## See also
 
-- [`@anthrorg-infra/codebase-pkg`](https://github.com/jctisdale/codebase-pkg) — companion package addressing the **structural** side of agent forgetting (codebase knowledge graph). `memory-pkg` handles the **episodic** side (the work itself).
+- [`@sylphie-labs/codebase-pkg`](https://github.com/jctisdale/codebase-pkg) — companion package addressing the **structural** side of agent forgetting (codebase knowledge graph). `memory-pkg` handles the **episodic** side (the work itself).

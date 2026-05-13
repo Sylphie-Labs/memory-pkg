@@ -1,5 +1,5 @@
 /**
- * @anthrorg-infra/memory-pkg — public library entry.
+ * @sylphie-labs/memory-pkg — public library entry.
  *
  * Most consumers use this package via the CLI, the MCP server, or the
  * .claude hooks installed by `memory-pkg setup`. This entry exists for

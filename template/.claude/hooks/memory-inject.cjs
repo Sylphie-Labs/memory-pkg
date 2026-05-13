@@ -24,12 +24,12 @@ const { spawnSync } = require("child_process");
 
 const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
-// Resolve the installed @anthrorg-infra/memory-pkg CLI. Standard layout first;
+// Resolve the installed @sylphie-labs/memory-pkg CLI. Standard layout first;
 // fall back to MEMORY_PKG_CLI_PATH for workspace/monorepo overrides.
 function resolveCliPath() {
   const candidates = [
     process.env.MEMORY_PKG_CLI_PATH,
-    path.join(PROJECT_DIR, "node_modules", "@anthrorg-infra", "memory-pkg", "dist", "cli", "memory-pkg.js"),
+    path.join(PROJECT_DIR, "node_modules", "@sylphie-labs", "memory-pkg", "dist", "cli", "memory-pkg.js"),
   ].filter(Boolean);
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;

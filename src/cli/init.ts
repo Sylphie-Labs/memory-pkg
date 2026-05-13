@@ -214,12 +214,12 @@ function installMcp(cwd: string, flags: Flags, managed: ManagedFile[]): void {
     flags.installMode === 'local'
       ? {
           command: 'node',
-          args: ['./node_modules/@anthrorg-infra/memory-pkg/dist/mcp-server/index.js'],
+          args: ['./node_modules/@sylphie-labs/memory-pkg/dist/mcp-server/index.js'],
           env: {},
         }
       : {
           command: 'npx',
-          args: ['-y', '@anthrorg-infra/memory-pkg', 'mcp-server'],
+          args: ['-y', '@sylphie-labs/memory-pkg', 'mcp-server'],
           env: {},
         };
 
@@ -282,7 +282,7 @@ function printSettingsSnippet(): void {
             },
             {
               type: 'command',
-              command: 'npx -y @anthrorg-infra/memory-pkg ingest >/dev/null 2>&1 || true',
+              command: 'npx -y @sylphie-labs/memory-pkg ingest >/dev/null 2>&1 || true',
               timeout: 30,
               async: true,
             },
