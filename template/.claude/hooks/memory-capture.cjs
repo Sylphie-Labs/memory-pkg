@@ -321,28 +321,42 @@ function processTranscript(transcriptPath, projectPath, cursor) {
   }
 }
 
+// ------------ exports (for unit tests) ------------
+// When required as a module, expose the pure functions and run nothing.
+module.exports = {
+  parseTranscriptLine,
+  processTranscript,
+  buildSearchText,
+  buildExcerpt,
+  summarizeToolCall,
+  sanitizeProjectPath,
+};
+
 // ------------ main ------------
+// Only run the hook when executed directly (node memory-capture.cjs), not
+// when required by a test.
+if (require.main === module) {
+  let input = "";
+  process.stdin.on("data", (c) => (input += c));
+  process.stdin.on("end", () => {
+    try {
+      const payload = JSON.parse(input || "{}");
+      const sessionId = payload.session_id;
+      if (!sessionId) return process.exit(0);
 
-let input = "";
-process.stdin.on("data", (c) => (input += c));
-process.stdin.on("end", () => {
-  try {
-    const payload = JSON.parse(input || "{}");
-    const sessionId = payload.session_id;
-    if (!sessionId) return process.exit(0);
+      const transcript = findTranscript(sessionId, PROJECT_DIR);
+      if (!transcript) return process.exit(0);
 
-    const transcript = findTranscript(sessionId, PROJECT_DIR);
-    if (!transcript) return process.exit(0);
+      const cursor = loadCursor(sessionId);
+      const { events, newOffset, lastUuid } = processTranscript(transcript, PROJECT_DIR, cursor);
 
-    const cursor = loadCursor(sessionId);
-    const { events, newOffset, lastUuid } = processTranscript(transcript, PROJECT_DIR, cursor);
-
-    if (events.length > 0) {
-      appendEvents(events);
+      if (events.length > 0) {
+        appendEvents(events);
+      }
+      saveCursor(sessionId, { lastUuid, byteOffset: newOffset });
+    } catch {
+      // Never block.
     }
-    saveCursor(sessionId, { lastUuid, byteOffset: newOffset });
-  } catch {
-    // Never block.
-  }
-  process.exit(0);
-});
+    process.exit(0);
+  });
+}
