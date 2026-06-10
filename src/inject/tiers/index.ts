@@ -11,16 +11,13 @@ import type { Tier } from './types.js';
 import { trigramTier } from './trigram.js';
 import { entityTier } from './entity.js';
 import { embeddingTier } from './embedding.js';
-import { classifierTier } from './classifier.js';
 
 export * from './types.js';
 
-// Fast path: cheap lexical tiers run in parallel on every prompt.
-// Rescue: semantic embedding tier runs only when the fast path is weak
-// (see FASTPATH_STRONG_THRESHOLD in generate.ts), so the cold-start model
+// Fast path: cheap lexical tiers (trigram + entity) run in parallel on every
+// prompt. Rescue: the semantic embedding tier runs only when the fast path is
+// weak (see FASTPATH_STRONG_THRESHOLD in generate.ts), so the cold-start model
 // load is paid rarely rather than on every prompt.
-// Classifier remains imported but dormant — add it to a list below to enable.
-void classifierTier;
 
 export function getFastPathTiers(): Tier[] {
   return [trigramTier, entityTier];

@@ -228,12 +228,11 @@ async function checkInjectPath(_cwd: string): Promise<CheckResult> {
 
 async function checkClaudeSpawnModels(cwd: string): Promise<CheckResult> {
   const rationale = getModelFor('rationale', cwd);
-  const classify = getModelFor('classify', cwd);
   const rerank = getModelFor('rerank', cwd);
   return {
     name: 'claude -p models',
     status: 'pass',
-    message: `rationale=${rationale}  classify=${classify}  rerank=${rerank}`,
+    message: `rationale=${rationale}  rerank=${rerank}`,
   };
 }
 

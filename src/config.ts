@@ -21,13 +21,12 @@ import * as path from 'path';
 const CONFIG_DIR = '.memory-pkg';
 const CONFIG_FILE = 'config.json';
 
-export type SpawnKind = 'rationale' | 'classify' | 'rerank';
+export type SpawnKind = 'rationale' | 'rerank';
 
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 
 export interface ModelConfig {
   rationale?: string;
-  classify?: string;
   rerank?: string;
 }
 
@@ -46,7 +45,6 @@ export interface UserConfig {
 
 const ENV_VAR_FOR_MODEL: Record<SpawnKind, string> = {
   rationale: 'MEMORY_PKG_RATIONALE_MODEL',
-  classify: 'MEMORY_PKG_CLASSIFY_MODEL',
   rerank: 'MEMORY_PKG_RERANK_MODEL',
 };
 
@@ -129,7 +127,6 @@ export function defaultUserConfig(): UserConfig {
   return {
     models: {
       rationale: DEFAULT_MODEL,
-      classify: DEFAULT_MODEL,
       rerank: DEFAULT_MODEL,
     },
     database: {

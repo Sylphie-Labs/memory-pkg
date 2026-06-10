@@ -4,7 +4,7 @@
 
 Every Claude Code session leaves a transcript JSONL on disk. `memory-pkg` reads those transcripts, indexes them in TimescaleDB, and auto-injects relevant historical events into every new user prompt. The agent stops asking the same clarifying question twice; the developer stops being the agent's notebook.
 
-> Status: 0.3.0 — capture, ingestion, and the lexical fast path (trigram + entity) are production-shape. Embeddings are now computed at ingest and the semantic tier runs as a rescue pass when the fast path is weak. The classifier tier remains dormant by default; the Neo4j knowledge-graph tier was removed in this version. A starter test suite (vitest) covers the core pure logic; the transcript-capture hook and merge paths are not yet covered.
+> Status: 0.3.0 — capture, ingestion, and the lexical fast path (trigram + entity) are production-shape. Embeddings are now computed at ingest and the semantic tier runs as a rescue pass when the fast path is weak. The dormant classifier and Neo4j knowledge-graph tiers were removed in this version. A starter test suite (vitest) covers the core pure logic, the transcript-capture collision fix, and the embedding skip/fallback path.
 
 ## License
 
@@ -61,7 +61,7 @@ The `memory-inject.cjs` hook is rendered with the package's absolute path baked 
 ## Lifecycle
 
 ```bash
-memory-pkg init       [--local] [--docker] [--classifier-context] [--force] [--dry-run]
+memory-pkg init       [--local] [--docker] [--force] [--dry-run]
 memory-pkg upgrade    [--plan] [--confirm] [--force]
 memory-pkg status                                # show install state + drift
 memory-pkg doctor     [--no-network]             # structural checks
@@ -108,7 +108,7 @@ memory-pkg uninstall  --confirm
 └──────────────────────────────────────────────┘
 ```
 
-The fast path is plain SQL trigram search against a Postgres GIN index, plus an entity tier that extracts identifiers from the prompt and the last 20 lines of the active transcript. For well-formed prompts this short-circuits the rest of the pipeline at score ≥ 0.7. When the fast path is weak, a semantic **rescue** tier embeds the query (`bge-small-en-v1.5`) and runs an HNSW cosine KNN against the embeddings computed at ingest — so the cold-start model load is paid only on hard prompts, not every turn. The classifier tier still ships but is dormant in the default registry; enable it by editing `src/inject/tiers/index.ts` if you fork.
+The fast path is plain SQL trigram search against a Postgres GIN index, plus an entity tier that extracts identifiers from the prompt and the last 20 lines of the active transcript. For well-formed prompts this short-circuits the rest of the pipeline at score ≥ 0.7. When the fast path is weak, a semantic **rescue** tier embeds the query (`bge-small-en-v1.5`) and runs an HNSW cosine KNN against the embeddings computed at ingest — so the cold-start model load is paid only on hard prompts, not every turn. The tier registry lives in `src/inject/tiers/index.ts` if you fork and want to add your own.
 
 ## MCP tools
 
@@ -133,7 +133,7 @@ npx memory-pkg rationale --limit 50
 
 ```bash
 # Lifecycle
-memory-pkg init        [--local] [--docker] [--classifier-context] [--force] [--dry-run]
+memory-pkg init        [--local] [--docker] [--force] [--dry-run]
 memory-pkg upgrade     [--plan] [--confirm] [--force] [--verbose]
 memory-pkg status
 memory-pkg doctor      [--no-network]
@@ -165,7 +165,6 @@ memory-pkg tune                   # summarize the rationale-log telemetry
 | `MEMORY_PKG_PG_PASSWORD` | `memory-pkg-local` | DB password |
 | `MEMORY_PKG_PG_DATABASE` | `memory` | DB name |
 | `MEMORY_PKG_REPO_ANCHOR` | (auto via `git rev-parse --show-toplevel`) | Absolute path of your repo root for subsystem derivation |
-| `MEMORY_PKG_CLASSIFIER_CONTEXT_FILE` | `.memory-pkg/classifier-context.md` | Path to classifier-tier project-context prompt |
 | `MEMORY_PKG_HOOK_TIMEOUT_MS` | `30000` | Injection-hook timeout (always fails open on overrun) |
 | `MEMORY_PKG_EMBED_MODEL` | `Xenova/bge-small-en-v1.5` | Embedding model used by the embedding tier |
 | `MEMORY_PKG_RATIONALE_MODEL` | `claude-haiku-4-5-20251001` | Model for rationale synthesis |

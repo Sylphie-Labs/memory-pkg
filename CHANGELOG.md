@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 - **Knowledge-graph (kg) retrieval tier and the `neo4j-driver` dependency.** The tier targeted a separate `codebase-pkg` Neo4j instance that `init`/`--docker` never provisioned; it was dormant by default and pulled a heavy runtime dependency into every install.
+- **Classifier retrieval tier** (`classify.ts`, `cache.ts`, `tiers/classifier.ts`), the `--classifier-context` init flag and its `classifier-context.md` stub, the `classify` spawn-model kind (`MEMORY_PKG_CLASSIFY_MODEL`), and the `MEMORY_PKG_CLASSIFIER_CONTEXT_FILE` setting. The tier was dormant and orphaned once the kg tier (its only downstream consumer) was removed; the embedding rescue tier now covers semantic retrieval. An existing `classifier-context.md` in a consumer repo becomes inert and can be deleted.
 
 ## [0.1.0] — 2026-05-12
 

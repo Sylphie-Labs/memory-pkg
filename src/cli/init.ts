@@ -11,9 +11,7 @@
  *      local-node_modules fallback are also honored.
  *   2. The memory-pkg MCP server stanza in .mcp.json.
  *   3. A .claude/skills/temporal-recall/SKILL.md template.
- *   4. Optionally a .memory-pkg/classifier-context.md stub
- *      (--classifier-context).
- *   5. Optionally a docker-compose.memory-pkg.yml (--docker).
+ *   4. Optionally a docker-compose.memory-pkg.yml (--docker).
  *
  * Prints a settings.json snippet to merge by hand (settings.json is usually
  * customized; we don't risk corrupting it).
@@ -42,7 +40,6 @@ type Flags = {
   dryRun: boolean;
   force: boolean;
   docker: boolean;
-  classifierContext: boolean;
   hooksOnly: boolean;
   mcpOnly: boolean;
   skillsOnly: boolean;
@@ -55,7 +52,6 @@ function parseFlags(args: string[]): Flags {
     dryRun: args.includes('--dry-run'),
     force: args.includes('--force'),
     docker: args.includes('--docker'),
-    classifierContext: args.includes('--classifier-context'),
     hooksOnly: args.includes('--hooks-only'),
     mcpOnly: args.includes('--mcp-only'),
     skillsOnly: args.includes('--skills-only'),
@@ -307,28 +303,6 @@ function installUserConfig(cwd: string, flags: Flags, managed: ManagedFile[]): v
   }
 }
 
-function installClassifierContext(cwd: string, flags: Flags, managed: ManagedFile[]): void {
-  const destRel = normalizePath(path.join('.memory-pkg', 'classifier-context.md'));
-  const destPath = path.join(cwd, destRel);
-  const content =
-    `# Memory-pkg classifier context\n\n` +
-    `Read by the classifier retrieval tier (dormant by default) to give Haiku\n` +
-    `project-specific context when classifying incoming prompts. Replace this\n` +
-    `stub with a description of your codebase: repo layout, key subsystems,\n` +
-    `naming conventions — anything that helps target memory retrieval.\n\n` +
-    `## Example layout (edit me)\n\n` +
-    `- \`src/api/\` — HTTP route handlers and controllers\n` +
-    `- \`src/services/\` — domain services\n` +
-    `- \`src/db/\` — database clients and migrations\n` +
-    `- \`docs/\` — design documents\n\n` +
-    `Override the path with the MEMORY_PKG_CLASSIFIER_CONTEXT_FILE env var.\n`;
-  const result = writeFileContent(destPath, content, flags);
-  process.stdout.write(`[init] classifier-context: ${result} ${destRel}\n`);
-  if (result === 'wrote' || (result === 'skipped' && fs.existsSync(destPath))) {
-    managed.push({ path: destRel, installedHash: hashFile(destPath) });
-  }
-}
-
 function installDocker(cwd: string, flags: Flags, managed: ManagedFile[]): void {
   const destRel = 'docker-compose.memory-pkg.yml';
   const destPath = path.join(cwd, destRel);
@@ -409,7 +383,6 @@ export async function runInit(args: string[]): Promise<number> {
   if (runMcp) installMcp(cwd, flags, managed);
   if (runSkills) installSkills(cwd, flags, managed);
   installUserConfig(cwd, flags, managed);
-  if (flags.classifierContext) installClassifierContext(cwd, flags, managed);
   if (flags.docker) installDocker(cwd, flags, managed);
 
   if (!flags.dryRun) {

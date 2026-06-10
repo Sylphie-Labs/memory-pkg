@@ -1,7 +1,8 @@
 /**
  * generate.ts -- Orchestrator for the UserPromptSubmit memory-injection hook.
  *
- * 1. Runs all enabled tiers (trigram, embedding, classifier, kg, ...) in parallel.
+ * 1. Runs the fast-path tiers (trigram + entity) in parallel; if none scores
+ *    strongly, runs the rescue tier (semantic embedding).
  * 2. Merges their candidate sets.
  * 3. Bulk-fetches full event rows for merged candidates.
  * 4. Splits strong vs ambiguous by fuzzy score; reranks ambiguous via Haiku.
@@ -19,10 +20,11 @@ import { appendTrace, type TierTrace, type FinalPick } from './rationale-log.js'
 import { appendInjectError } from './error-log.js';
 import type { TierResult } from './tiers/types.js';
 
-// When fast-path candidates have at least one score at/above this threshold,
-// the rescue phase (classifier + kg) is skipped. Embedding similarity is
-// liberal — random text can score ~0.6 — so the default is 0.7 to ensure the
-// fast-path answer is genuinely strong before we short-circuit the classifier.
+// When fast-path (trigram + entity) candidates have at least one score at/above
+// this threshold, the rescue phase (the semantic embedding tier) is skipped.
+// Embedding similarity is liberal — random text can score ~0.6 — so the default
+// is 0.7 to ensure the fast-path answer is genuinely strong before we pay the
+// embedding model's cold-start cost.
 // Override via DRIFT_MEMORY_FASTPATH_STRONG_THRESHOLD.
 const FASTPATH_STRONG_THRESHOLD = parseFloat(
   process.env.DRIFT_MEMORY_FASTPATH_STRONG_THRESHOLD || '0.7',
@@ -98,8 +100,8 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
   const fastResults = await Promise.all(getFastPathTiers().map(safeRun));
 
   // If fast path has a clearly strong match, skip the rescue phase — no
-  // classifier Haiku cost, no graph expansion. Threshold applies to the
-  // MERGED (weighted) score so multi-tier agreement can count too.
+  // embedding model load. Threshold applies to the MERGED (weighted) score so
+  // multi-tier agreement can count too.
   const fastMerged = mergeCandidates(fastResults, mergerConfig);
   const fastPathIsStrong = fastMerged.some((c) => c.score >= FASTPATH_STRONG_THRESHOLD);
 
@@ -143,7 +145,7 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
 
   const ranked: Ranked[] = [...strong];
 
-  // Rerank is OFF by default. Classifier + merger already do semantic filtering,
+  // Rerank is OFF by default. The merger already does semantic filtering,
   // and rerank adds 4-8s per run. Enable with DRIFT_MEMORY_RERANK_ENABLED=1 (or
   // DRIFT_MEMORY_RERANK_DISABLED="" to negate legacy off-switches).
   const rerankEnabled = !!process.env.DRIFT_MEMORY_RERANK_ENABLED
