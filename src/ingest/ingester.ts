@@ -20,7 +20,7 @@ const BUFFER_FILE = path.join(BUFFER_DIR, 'buffer.jsonl');
 const PROCESSING_FILE = path.join(BUFFER_DIR, 'buffer.processing.jsonl');
 const FAILED_FILE = path.join(BUFFER_DIR, 'buffer.failed.jsonl');
 
-interface BufferEvent {
+export interface BufferEvent {
   ts: string;
   session_id: string;
   project_path?: string;
@@ -70,8 +70,14 @@ function parseLines(content: string): BufferEvent[] {
  * (the embedding tier filters them out anyway and they're noisy/large).
  * Returns a pgvector literal string per event, or null where we skip or
  * if embedding fails — a vector problem must never drop the event.
+ *
+ * `embedFn` is injectable so the skip/fallback logic can be unit-tested
+ * without loading the (heavy) embedding model; it defaults to embedMany.
  */
-async function computeEmbeddings(events: BufferEvent[]): Promise<(string | null)[]> {
+export async function computeEmbeddings(
+  events: BufferEvent[],
+  embedFn: (texts: string[]) => Promise<number[][]> = embedMany,
+): Promise<(string | null)[]> {
   const out: (string | null)[] = new Array(events.length).fill(null);
   const idxs: number[] = [];
   const texts: string[] = [];
@@ -84,7 +90,7 @@ async function computeEmbeddings(events: BufferEvent[]): Promise<(string | null)
   });
   if (texts.length === 0) return out;
   try {
-    const vecs = await embedMany(texts);
+    const vecs = await embedFn(texts);
     for (let k = 0; k < idxs.length; k++) out[idxs[k]] = toVectorLiteral(vecs[k]);
   } catch (err) {
     process.stderr.write(

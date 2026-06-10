@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-10
+
 ### Fixed
 - **Silent event loss on multi-event transcript lines.** Events parsed from a single transcript line (assistant text + multiple `tool_use` blocks, parallel tool calls, or multiple `tool_result` blocks) shared one `transcript_uuid`/`ts` and collided on the `(session_id, transcript_uuid, ts)` unique index — all but one were dropped by `ON CONFLICT DO NOTHING`. Multi-event lines now suffix `transcript_uuid` with the block index; single-event lines keep the bare uuid for backward-compatibility.
 - Rationale prompt no longer hardcodes the `drift-detector` project name; it is derived from the repo directory.
@@ -20,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `inject-errors.log` diagnostic trail plus a `doctor` inject-path check that surfaces otherwise-silent retrieval failures.
 - Entity tier dampens transcript-only entities (weight 0.6) so recent debugging context doesn't crowd out the actual question.
 - `MEMORY_PKG_EMBED_MODEL` is now honored (in addition to the legacy `DRIFT_MEMORY_EMBED_MODEL`).
+- **`0.2.0 → 0.3.0` upgrade migration** that re-installs the fixed `memory-capture.cjs` (drift-safe, backs up modified hooks under `--force`) and warns that the rationale Stop-hook step must be re-merged into `settings.json`.
+- **`doctor` rationale-wiring check** that inspects `.claude/settings.json`/`settings.local.json` and warns when the `Stop` hook doesn't chain `rationale`.
+- **Test suite (vitest).** Initial coverage for `extractEntities`, `computeEmbeddings` (skip/fallback), `getModelFor`/`getDatabaseConfig` resolution, `deriveSubsystem`, and `toVectorLiteral`. Run with `npm test`.
 
 ### Removed
 - **Knowledge-graph (kg) retrieval tier and the `neo4j-driver` dependency.** The tier targeted a separate `codebase-pkg` Neo4j instance that `init`/`--docker` never provisioned; it was dormant by default and pulled a heavy runtime dependency into every install.

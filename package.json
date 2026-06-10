@@ -1,6 +1,6 @@
 {
   "name": "@sylphie-labs/memory-pkg",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Long-term session memory for Claude Code. Captures every transcript, indexes events in TimescaleDB, and auto-injects relevant history into every new prompt. Multi-tier retrieval with a SQL-only fast path; rationale synthesis compresses turns into searchable 'why' events at ingest.",
   "keywords": [
     "claude",
@@ -68,7 +68,9 @@
     "mcp-server": "node dist/mcp-server/index.js",
     "schema:init": "node dist/schema.js",
     "ingest": "node dist/ingest/ingester.js",
-    "memory": "node dist/cli/memory-pkg.js"
+    "memory": "node dist/cli/memory-pkg.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@huggingface/transformers": "^3",
@@ -79,7 +81,8 @@
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "rimraf": "^6.0.1",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
   },
   "publishConfig": {
     "access": "public"

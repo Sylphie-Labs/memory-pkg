@@ -136,6 +136,63 @@ async function checkHookSyntax(cwd: string): Promise<CheckResult> {
   return { name: 'hooks', status: 'fail', message: failures.join('; ') };
 }
 
+async function checkRationaleWiring(cwd: string): Promise<CheckResult> {
+  const candidates = [
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.local.json'),
+  ];
+
+  let anyFileExists = false;
+  const stopCommands: string[] = [];
+
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    anyFileExists = true;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+      const stopGroups = (parsed?.hooks as Record<string, unknown> | undefined)?.Stop;
+      if (!Array.isArray(stopGroups)) continue;
+      for (const group of stopGroups) {
+        const hookEntries = (group as Record<string, unknown>)?.hooks;
+        if (!Array.isArray(hookEntries)) continue;
+        for (const entry of hookEntries) {
+          const cmd = (entry as Record<string, unknown>)?.command;
+          if (typeof cmd === 'string') stopCommands.push(cmd);
+        }
+      }
+    } catch {
+      // unparseable file — skip silently
+    }
+  }
+
+  if (!anyFileExists) {
+    return {
+      name: 'rationale wiring',
+      status: 'warn',
+      message: `no .claude/settings.json found; merge the snippet from 'memory-pkg init'`,
+    };
+  }
+  if (stopCommands.length === 0) {
+    return {
+      name: 'rationale wiring',
+      status: 'warn',
+      message: `no Stop hook configured; capture/ingest/rationale won't run — re-merge the 'memory-pkg init' snippet`,
+    };
+  }
+  if (!stopCommands.some((cmd) => cmd.includes('rationale'))) {
+    return {
+      name: 'rationale wiring',
+      status: 'warn',
+      message: `Stop hook runs but does not invoke rationale — automatic 'why' synthesis is off. Re-merge the updated snippet from 'memory-pkg init' (chains rationale after ingest).`,
+    };
+  }
+  return {
+    name: 'rationale wiring',
+    status: 'pass',
+    message: `Stop hook chains rationale synthesis`,
+  };
+}
+
 async function checkInjectPath(_cwd: string): Promise<CheckResult> {
   // Exercise the same retrieval pipeline the UserPromptSubmit hook runs, so
   // a misconfigured port or unreachable DB surfaces here instead of only as
@@ -223,6 +280,7 @@ export async function runDoctor(args: string[]): Promise<number> {
     () => checkManagedFiles(cwd),
     () => checkMcpStanza(cwd),
     () => checkHookSyntax(cwd),
+    () => checkRationaleWiring(cwd),
     () => checkClaudeSpawnModels(cwd),
   ];
   if (!noNetwork) {

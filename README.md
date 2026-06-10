@@ -4,7 +4,7 @@
 
 Every Claude Code session leaves a transcript JSONL on disk. `memory-pkg` reads those transcripts, indexes them in TimescaleDB, and auto-injects relevant historical events into every new user prompt. The agent stops asking the same clarifying question twice; the developer stops being the agent's notebook.
 
-> Status: 0.2.0 — capture, ingestion, and the lexical fast path (trigram + entity) are production-shape. Embeddings are now computed at ingest and the semantic tier runs as a rescue pass when the fast path is weak. The classifier tier remains dormant by default; the Neo4j knowledge-graph tier was removed in this version. No test suite yet.
+> Status: 0.3.0 — capture, ingestion, and the lexical fast path (trigram + entity) are production-shape. Embeddings are now computed at ingest and the semantic tier runs as a rescue pass when the fast path is weak. The classifier tier remains dormant by default; the Neo4j knowledge-graph tier was removed in this version. A starter test suite (vitest) covers the core pure logic; the transcript-capture hook and merge paths are not yet covered.
 
 ## License
 
@@ -177,7 +177,7 @@ Legacy `DRIFT_MEMORY_*` env vars are still recognized for retrieval-tier toggles
 - Cross-project memory federation
 - Continuous aggregates / compression on old TimescaleDB chunks
 - Embedding backfill for rows ingested before 0.2.0 (new events embed at ingest; `backfill-embeddings` fills legacy rows on demand)
-- Test suite
+- Full test coverage (a starter vitest suite exists — run `npm test`; the `.cjs` capture hook and merger remain uncovered)
 
 ## See also
 

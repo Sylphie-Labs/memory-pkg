@@ -94,7 +94,7 @@ function stripAbsolutePaths(text: string): string {
     .replace(/\/home\/[^\s`"'\n/]+\//g, '');
 }
 
-function extractEntities(text: string): string[] {
+export function extractEntities(text: string): string[] {
   if (!text) return [];
   const corpus = stripAbsolutePaths(text);
   const out = new Set<string>();
