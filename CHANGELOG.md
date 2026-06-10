@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-10
+
+### Added
+- **`ingest --retry-failed`** re-queues stranded events from `buffer.failed.jsonl` back through the normal ingest pipeline.
+- **`doctor` dead-letter check** warns when `buffer.failed.jsonl` has stranded events, with the retry command in the message.
+- **DB schema versioning.** `memory_meta` table records `schema_version` (currently `1`); `getSchemaVersion()` exported from `src/schema.ts`. `initSchema` is idempotent against the new table.
+- **`MigrationContext.runQuery?`** — optional DB query handle wired into every migration context; migrations that need to ALTER or query the database can now do so without accessing the pool directly.
+- **`installSettings`** — `init` now JSON-merges the three required hook entries into `.claude/settings.json` idempotently (marker-substring detection, `--force` replaces existing entries). Falls back to printing the snippet when the file is unparseable. Settings file is never added to `managedFiles` and never deleted on uninstall.
+- **O_EXCL lockfile** (`ingest.lock`) prevents two concurrent `ingest` processes from racing on the buffer files; stale locks (>10 min) are broken automatically.
+
+### Fixed
+- **Partial-init version teleport.** `init --mcp-only --force` (and `--hooks-only`, `--skills-only`) no longer stamps the CLI version into `state.json` — `state.version` (the migration cursor) is preserved from the existing state, so `upgrade` still sees pending migrations.
+- **`installedHash` baseline corruption.** When `init` adopts a pre-existing file without overwriting it, it now records the hash of the bundled template (not the user's file) as `installedHash`. Drift detection is now honest: a customized hook reads as `modified` instead of `unchanged`, so future migrations warn/skip instead of silently clobbering it.
+- **Atomic `writeState`.** `writeState` now writes to a `state.json.tmp-<pid>-<ts>` file and renames atomically. A crash mid-write can no longer leave a truncated `state.json`.
+- **Per-migration state persistence.** `applyAll` calls `persistState` after each successful migration. A crash mid-chain (e.g. migration 2 of 3 throws) now resumes from the last completed step on re-run instead of replaying from the original version.
+- **`rotateBuffer` race closed.** Uses `renameSync` (atomic detach from the buffer path) instead of read-then-unlink. Hook appends that race the rotation now land in a fresh buffer file and are never lost. Orphaned `.rotating` temps from a prior crash are recovered on entry.
+- **`insertBatch` Postgres parameter limit.** Events now chunked at 4,285 per statement (4,285 × 14 cols = 59,990, under the 65,535 bind-parameter cap). Large crash-recovery batches or long sessions no longer dead-letter silently.
+- **`compareVersions` prerelease handling.** `0.3.0` now correctly compares greater than `0.3.0-rc.1`; the downgrade guard no longer fires backwards after an rc install.
+- **`tool_use` payload cap.** Tool inputs (file writes, heredocs) now capped at 8,000 chars, mirroring the existing `tool_result` cap. Oversized inputs stored as `{ input_truncated: true, input_preview: "<first 8000 chars>" }`.
+- **`memory-inject.cjs` Windows argv limit.** Prompt is now passed to `inject` via stdin with the `-` sentinel instead of as an argv element. Avoids the ~32KB `CreateProcess` command-line cap that was silently disabling injection for long pasted prompts.
+- **`.mcp.json` out of `managedFiles`.** Adding other MCP servers to `.mcp.json` no longer causes perpetual `modified` drift warnings. The stanza presence is validated by `doctor`'s `checkMcpStanza`; hash tracking adds no value and uninstall must never delete a shared file.
+
+### Changed
+- Hook commands in `settings.json` now use relative paths (`node .claude/hooks/memory-inject.cjs`) instead of `"$CLAUDE_PROJECT_DIR"` shell expansion — cross-platform, works under cmd.exe.
+- `Stop`-hook ingest+rationale command drops the POSIX-only `>/dev/null 2>&1 || true` redirection (async hook; output is not surfaced to the user anyway).
+- `inject` CLI case now parses flags from `[arg, ...rest]` (the old `parseFlags(rest)` silently dropped the first flag); positional `-` explicitly triggers stdin read.
+- Memory overflow instruction softened from `REQUIRED: you MUST call searchMemory` to an advisory suggestion.
+
+### Removed
+- `cursor.lastUuid` from the capture-hook cursor state. Only `byteOffset` drives resumption; `lastUuid` was populated but never read. Old cursor files (with the field) load cleanly.
+
 ## [0.3.0] — 2026-06-10
 
 ### Fixed

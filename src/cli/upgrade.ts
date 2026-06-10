@@ -112,6 +112,9 @@ export async function runUpgrade(args: string[]): Promise<number> {
 
   process.stdout.write(`\n[upgrade] applying ${plan.migrations.length} migration(s)...\n\n`);
 
+  // Lazily import so plan-only runs never load pg.
+  const { runQuery } = await import('../timescale-client.js');
+
   const result = await applyAll({
     ctx: {
       cwd,
@@ -119,8 +122,10 @@ export async function runUpgrade(args: string[]): Promise<number> {
       force: flags.force,
       packageRoot: getPackageRoot(),
       state,
+      runQuery,
     },
     plan,
+    persistState: (s) => writeState(cwd, s),
   });
 
   for (const { migration, result: r } of result.results) {
@@ -132,8 +137,6 @@ export async function runUpgrade(args: string[]): Promise<number> {
       process.stdout.write(`         WARN: ${w}\n`);
     }
   }
-
-  writeState(cwd, result.finalState);
 
   process.stdout.write(
     `\n[upgrade] Done. Applied ${result.appliedCount} migration(s). ` +

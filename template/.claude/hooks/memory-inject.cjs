@@ -65,8 +65,11 @@ process.stdin.on("end", () => {
     if (!prompt || prompt.length < 6) return process.exit(0);
     if (!CLI_PATH) return process.exit(0); // memory-pkg not installed / not resolvable
 
-    // Pass prompt as positional arg (spawn with array-form avoids shell escaping issues).
-    const args = ["--enable-source-maps", CLI_PATH, "inject", prompt];
+    // Pass the prompt via the child's stdin ('-' sentinel) rather than argv:
+    // Windows caps the spawn command line near 32KB, and long pasted prompts
+    // were silently killing injection. The CLI treats 'inject -' as
+    // read-prompt-from-stdin.
+    const args = ["--enable-source-maps", CLI_PATH, "inject", "-"];
     if (sessionId) args.push("--session", sessionId);
     if (transcriptPath) args.push("--transcript", transcriptPath);
 
@@ -74,6 +77,7 @@ process.stdin.on("end", () => {
       encoding: "utf8",
       timeout: TIMEOUT_MS,
       cwd: PROJECT_DIR,
+      input: prompt,
     });
 
     if (res.status !== 0) return process.exit(0);

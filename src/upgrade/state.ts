@@ -49,7 +49,21 @@ export function readState(cwd: string): InstallState | null {
 export function writeState(cwd: string, state: InstallState): void {
   const p = statePath(cwd);
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(state, null, 2) + '\n', 'utf8');
+  // Write-temp-then-rename so a crash mid-write can never leave a truncated
+  // state.json. rename() replaces the destination atomically on POSIX and
+  // (via MoveFileEx) on Windows.
+  const tmp = `${p}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n', 'utf8');
+  try {
+    fs.renameSync(tmp, p);
+  } catch (err) {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // ignore cleanup failure
+    }
+    throw err;
+  }
 }
 
 export function removeState(cwd: string): void {

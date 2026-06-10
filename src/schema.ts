@@ -9,6 +9,15 @@
 
 import { runQuery, closePool } from './timescale-client.js';
 
+/**
+ * Monotonically increasing schema version. Bump by 1 whenever a statement is
+ * added to STATEMENTS below; initSchema stamps it into memory_meta after a
+ * successful run. Version 1 = everything through 0.3.0 (memory_events
+ * hypertable, subsystem, embedding, transcript_uuid unique index, memory_meta
+ * itself).
+ */
+export const SCHEMA_VERSION = 1;
+
 const STATEMENTS: Array<{ label: string; sql: string }> = [
   {
     label: 'extension: timescaledb',
@@ -92,6 +101,16 @@ const STATEMENTS: Array<{ label: string; sql: string }> = [
     label: 'unique: transcript_uuid (idempotent ingest)',
     sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_transcript_uuid ON memory_events (session_id, transcript_uuid, ts) WHERE transcript_uuid IS NOT NULL;`,
   },
+  {
+    label: 'table: memory_meta (schema versioning)',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_meta (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `,
+  },
 ];
 
 export async function initSchema(): Promise<void> {
@@ -118,6 +137,31 @@ export async function initSchema(): Promise<void> {
       process.stderr.write(`[schema] FAIL: ${label}\n  ${msg}\n`);
       throw err;
     }
+  }
+  await runQuery(
+    `INSERT INTO memory_meta (key, value, updated_at)
+     VALUES ('schema_version', $1, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [String(SCHEMA_VERSION)],
+  );
+  process.stdout.write(`[schema] schema_version = ${SCHEMA_VERSION}\n`);
+}
+
+/**
+ * Read the recorded schema version. Returns null when the memory_meta table
+ * does not exist yet (database initialized by a pre-versioning release) or
+ * the DB is unreachable — callers must treat null as "unknown", not "zero".
+ */
+export async function getSchemaVersion(): Promise<number | null> {
+  try {
+    const rows = await runQuery<{ value: string }>(
+      `SELECT value FROM memory_meta WHERE key = 'schema_version'`,
+    );
+    if (rows.length === 0) return null;
+    const n = parseInt(rows[0].value, 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
   }
 }
 

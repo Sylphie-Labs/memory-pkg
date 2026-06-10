@@ -136,6 +136,30 @@ async function checkHookSyntax(cwd: string): Promise<CheckResult> {
   return { name: 'hooks', status: 'fail', message: failures.join('; ') };
 }
 
+async function checkDeadLetter(cwd: string): Promise<CheckResult> {
+  const failedPath = path.join(cwd, '.claude', 'memory', 'buffer.failed.jsonl');
+  if (!fs.existsSync(failedPath)) {
+    return { name: 'dead-letter', status: 'pass', message: 'no failed-ingest buffer' };
+  }
+  let lineCount = 0;
+  try {
+    lineCount = fs
+      .readFileSync(failedPath, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim()).length;
+  } catch {
+    return { name: 'dead-letter', status: 'warn', message: `buffer.failed.jsonl exists but is unreadable` };
+  }
+  if (lineCount === 0) {
+    return { name: 'dead-letter', status: 'pass', message: 'failed-ingest buffer present but empty' };
+  }
+  return {
+    name: 'dead-letter',
+    status: 'warn',
+    message: `${lineCount} event(s) stranded in buffer.failed.jsonl — run 'memory-pkg ingest --retry-failed'`,
+  };
+}
+
 async function checkRationaleWiring(cwd: string): Promise<CheckResult> {
   const candidates = [
     path.join(cwd, '.claude', 'settings.json'),
@@ -279,6 +303,7 @@ export async function runDoctor(args: string[]): Promise<number> {
     () => checkManagedFiles(cwd),
     () => checkMcpStanza(cwd),
     () => checkHookSyntax(cwd),
+    () => checkDeadLetter(cwd),
     () => checkRationaleWiring(cwd),
     () => checkClaudeSpawnModels(cwd),
   ];

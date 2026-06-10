@@ -13,8 +13,8 @@
  *   3. A .claude/skills/temporal-recall/SKILL.md template.
  *   4. Optionally a docker-compose.memory-pkg.yml (--docker).
  *
- * Prints a settings.json snippet to merge by hand (settings.json is usually
- * customized; we don't risk corrupting it).
+ * JSON-merges the required hooks into .claude/settings.json (additive,
+ * idempotent; falls back to printing a snippet if the file is unparseable).
  *
  * Records what was installed at .memory-pkg/state.json for upgrade/uninstall.
  *
@@ -25,6 +25,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import * as crypto from 'crypto';
 import {
   hashFile,
   normalizePath,
@@ -80,6 +81,16 @@ function readPackageVersion(): string {
   const pkgPath = path.join(getPackageRoot(), 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version: string };
   return pkg.version;
+}
+
+/**
+ * Hash content we generated/rendered in memory (the template baseline).
+ * Used when an existing file is adopted without being overwritten: the
+ * managed baseline must be OUR template, never the user's pre-existing
+ * file, so drift detection stays honest.
+ */
+function hashString(content: string | Buffer): string {
+  return crypto.createHash('sha256').update(content).digest('hex');
 }
 
 function listFilesRecursive(dir: string): string[] {
@@ -151,27 +162,34 @@ function installHooks(cwd: string, flags: Flags, managed: ManagedFile[]): void {
   const captureDest = path.join(cwd, captureRel);
   const captureResult = copyFile(captureSrc, captureDest, flags);
   process.stdout.write(`  ${captureResult.padEnd(12)} ${captureRel}\n`);
-  if (captureResult === 'wrote' || (captureResult === 'skipped' && fs.existsSync(captureDest))) {
+  if (captureResult === 'wrote') {
     managed.push({ path: captureRel, installedHash: hashFile(captureDest) });
+  } else if (captureResult === 'skipped' && fs.existsSync(captureDest)) {
+    // Adopted, not written: baseline is the bundled template, so a user file
+    // that differs reads as 'modified' and upgrades will not clobber it.
+    managed.push({ path: captureRel, installedHash: hashString(fs.readFileSync(captureSrc)) });
   }
 
   // memory-inject.cjs: render with baked CLI path.
   const injectRel = normalizePath(path.join('.claude', 'hooks', 'memory-inject.cjs'));
   const injectDest = path.join(cwd, injectRel);
+  const rendered = renderInjectHook(getCliAbsolutePath());
   let injectResult: WriteResult;
   if (fs.existsSync(injectDest) && !flags.force) {
     injectResult = 'skipped';
   } else if (flags.dryRun) {
     injectResult = 'would-write';
   } else {
-    const rendered = renderInjectHook(getCliAbsolutePath());
     fs.mkdirSync(path.dirname(injectDest), { recursive: true });
     fs.writeFileSync(injectDest, rendered, 'utf8');
     injectResult = 'wrote';
   }
   process.stdout.write(`  ${injectResult.padEnd(12)} ${injectRel}  (CLI_PATH baked: ${normalizePath(getCliAbsolutePath())})\n`);
-  if (injectResult === 'wrote' || (injectResult === 'skipped' && fs.existsSync(injectDest))) {
+  if (injectResult === 'wrote') {
     managed.push({ path: injectRel, installedHash: hashFile(injectDest) });
+  } else if (injectResult === 'skipped' && fs.existsSync(injectDest)) {
+    // Baseline = what we would have rendered for THIS install location.
+    managed.push({ path: injectRel, installedHash: hashString(rendered) });
   }
 }
 
@@ -187,8 +205,10 @@ function installSkills(cwd: string, flags: Flags, managed: ManagedFile[]): void 
     const dest = path.join(cwd, destRel);
     const result = copyFile(src, dest, flags);
     process.stdout.write(`  ${result.padEnd(12)} ${destRel}\n`);
-    if (result === 'wrote' || (result === 'skipped' && fs.existsSync(dest))) {
+    if (result === 'wrote') {
       managed.push({ path: destRel, installedHash: hashFile(dest) });
+    } else if (result === 'skipped' && fs.existsSync(dest)) {
+      managed.push({ path: destRel, installedHash: hashString(fs.readFileSync(src)) });
     }
   }
 }
@@ -203,7 +223,7 @@ interface McpConfig {
   mcpServers?: Record<string, McpStanza>;
 }
 
-function installMcp(cwd: string, flags: Flags, managed: ManagedFile[]): void {
+function installMcp(cwd: string, flags: Flags): void {
   const mcpRel = '.mcp.json';
   const mcpPath = path.join(cwd, mcpRel);
 
@@ -233,9 +253,6 @@ function installMcp(cwd: string, flags: Flags, managed: ManagedFile[]): void {
 
   if (existing.mcpServers['memory-pkg'] && !flags.force) {
     process.stdout.write(`[init] mcp: skipped ${mcpRel} (memory-pkg server already registered; --force to overwrite)\n`);
-    if (fs.existsSync(mcpPath)) {
-      managed.push({ path: mcpRel, installedHash: hashFile(mcpPath) });
-    }
     return;
   }
 
@@ -248,12 +265,135 @@ function installMcp(cwd: string, flags: Flags, managed: ManagedFile[]): void {
   }
   fs.writeFileSync(mcpPath, out, 'utf8');
   process.stdout.write(`[init] mcp: wrote ${mcpRel} with memory-pkg server stanza\n`);
-  managed.push({ path: mcpRel, installedHash: hashFile(mcpPath) });
+}
+
+type HookEntry = { type: string; command: string; timeout?: number; async?: boolean };
+type HookGroup = { matcher?: string; hooks?: HookEntry[] };
+
+/**
+ * The hook entries we want present in .claude/settings.json, with a marker
+ * substring used to detect whether an equivalent entry already exists.
+ * Commands are cross-platform: relative paths (hooks run with cwd = project
+ * dir), no shell variable expansion, no redirects; `&&` works in both sh and
+ * cmd.exe.
+ */
+function desiredSettingsHooks(): Array<{ event: 'UserPromptSubmit' | 'Stop'; marker: string; entry: HookEntry }> {
+  return [
+    {
+      event: 'UserPromptSubmit',
+      marker: 'memory-inject.cjs',
+      entry: {
+        type: 'command',
+        command: 'node .claude/hooks/memory-inject.cjs',
+        timeout: 30,
+      },
+    },
+    {
+      event: 'Stop',
+      marker: 'memory-capture.cjs',
+      entry: {
+        type: 'command',
+        command: 'node .claude/hooks/memory-capture.cjs',
+        timeout: 10,
+      },
+    },
+    {
+      event: 'Stop',
+      marker: 'memory-pkg ingest',
+      entry: {
+        type: 'command',
+        command:
+          'npx -y @sylphie-labs/memory-pkg ingest && npx -y @sylphie-labs/memory-pkg rationale --limit 20',
+        timeout: 120,
+        async: true,
+      },
+    },
+  ];
+}
+
+/**
+ * JSON-merge our hook entries into .claude/settings.json (same ownership
+ * model as .mcp.json: shared file, additive merge, never tracked in
+ * managedFiles, never deleted on uninstall).
+ *
+ * Idempotent: an entry is considered present when any existing hook command
+ * for that event contains its marker substring. With --force, existing
+ * marker-matching entries are removed first and fresh ones appended.
+ * If the file exists but is not valid JSON, we refuse to touch it and fall
+ * back to printing the snippet for hand-merging.
+ */
+function installSettings(cwd: string, flags: Flags): void {
+  const rel = normalizePath(path.join('.claude', 'settings.json'));
+  const abs = path.join(cwd, rel);
+
+  let settings: Record<string, unknown> = {};
+  if (fs.existsSync(abs)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(abs, 'utf8')) as Record<string, unknown>;
+    } catch {
+      process.stderr.write(`[init] settings: ${rel} is not valid JSON; refusing to edit it.\n`);
+      printSettingsSnippet();
+      return;
+    }
+  }
+
+  const hooks = (settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {}) as Record<
+    string,
+    unknown
+  >;
+  settings.hooks = hooks;
+
+  const desired = desiredSettingsHooks();
+  const added: string[] = [];
+
+  for (const { event, marker, entry } of desired) {
+    let groups: HookGroup[] = Array.isArray(hooks[event]) ? (hooks[event] as HookGroup[]) : [];
+
+    if (flags.force) {
+      // Drop our previous entries (matched by marker) so the fresh ones win.
+      groups = groups
+        .map((g) => ({
+          ...g,
+          hooks: (g.hooks ?? []).filter(
+            (h) => !(typeof h.command === 'string' && h.command.includes(marker)),
+          ),
+        }))
+        .filter((g) => (g.hooks ?? []).length > 0);
+    }
+
+    const present = groups.some((g) =>
+      (g.hooks ?? []).some((h) => typeof h.command === 'string' && h.command.includes(marker)),
+    );
+    if (present) continue;
+
+    // Append into (or create) a matcher-'' group we control.
+    let target = groups.find((g) => (g.matcher ?? '') === '');
+    if (!target) {
+      target = { matcher: '', hooks: [] };
+      groups.push(target);
+    }
+    target.hooks = target.hooks ?? [];
+    target.hooks.push(entry);
+    added.push(`${event}: ${entry.command}`);
+    hooks[event] = groups;
+  }
+
+  if (added.length === 0) {
+    process.stdout.write(`[init] settings: ${rel} already wired (no changes)\n`);
+    return;
+  }
+  if (flags.dryRun) {
+    process.stdout.write(`[init] settings: would-write ${rel} (+${added.length} hook entr${added.length === 1 ? 'y' : 'ies'})\n`);
+    return;
+  }
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+  process.stdout.write(`[init] settings: wrote ${rel}\n`);
+  for (const a of added) process.stdout.write(`  added       ${a}\n`);
 }
 
 function printSettingsSnippet(): void {
-  process.stdout.write(`\n[init] settings.json — add the following hooks block to .claude/settings.json:\n`);
-  process.stdout.write(`        (we do NOT edit settings.json automatically; merge by hand)\n\n`);
+  process.stdout.write(`\n[init] settings.json — merge the following hooks block into .claude/settings.json by hand:\n\n`);
   const snippet = {
     hooks: {
       UserPromptSubmit: [
@@ -262,7 +402,7 @@ function printSettingsSnippet(): void {
           hooks: [
             {
               type: 'command',
-              command: 'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/memory-inject.cjs',
+              command: 'node .claude/hooks/memory-inject.cjs',
               timeout: 30,
             },
           ],
@@ -274,13 +414,13 @@ function printSettingsSnippet(): void {
           hooks: [
             {
               type: 'command',
-              command: 'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/memory-capture.cjs',
+              command: 'node .claude/hooks/memory-capture.cjs',
               timeout: 10,
             },
             {
               type: 'command',
               command:
-                'npx -y @sylphie-labs/memory-pkg ingest >/dev/null 2>&1 && npx -y @sylphie-labs/memory-pkg rationale --limit 20 >/dev/null 2>&1 || true',
+                'npx -y @sylphie-labs/memory-pkg ingest && npx -y @sylphie-labs/memory-pkg rationale --limit 20',
               timeout: 120,
               async: true,
             },
@@ -298,8 +438,10 @@ function installUserConfig(cwd: string, flags: Flags, managed: ManagedFile[]): v
   const content = JSON.stringify(defaultUserConfig(), null, 2) + '\n';
   const result = writeFileContent(destPath, content, flags);
   process.stdout.write(`[init] config: ${result} ${destRel}\n`);
-  if (result === 'wrote' || (result === 'skipped' && fs.existsSync(destPath))) {
+  if (result === 'wrote') {
     managed.push({ path: destRel, installedHash: hashFile(destPath) });
+  } else if (result === 'skipped' && fs.existsSync(destPath)) {
+    managed.push({ path: destRel, installedHash: hashString(content) });
   }
 }
 
@@ -331,8 +473,10 @@ function installDocker(cwd: string, flags: Flags, managed: ManagedFile[]): void 
     `  memory_pkg_timescale_data:\n`;
   const result = writeFileContent(destPath, content, flags);
   process.stdout.write(`[init] docker: ${result} ${destRel}\n`);
-  if (result === 'wrote' || (result === 'skipped' && fs.existsSync(destPath))) {
+  if (result === 'wrote') {
     managed.push({ path: destRel, installedHash: hashFile(destPath) });
+  } else if (result === 'skipped' && fs.existsSync(destPath)) {
+    managed.push({ path: destRel, installedHash: hashString(content) });
   }
 }
 
@@ -345,7 +489,7 @@ function printNextSteps(pm: string, mode: InstallMode, didDocker: boolean): void
   } else {
     process.stdout.write(`  ${n++}. Ensure TimescaleDB is running on localhost:5432 (override host/port/creds in .memory-pkg/config.json or MEMORY_PKG_PG_*)\n`);
   }
-  process.stdout.write(`  ${n++}. Merge the printed settings.json snippet into .claude/settings.json\n`);
+  process.stdout.write(`  ${n++}. Verify the hooks block in .claude/settings.json (written/merged by init)\n`);
   if (mode === 'local') {
     process.stdout.write(`  ${n++}. npx memory-pkg schema\n`);
   } else {
@@ -375,31 +519,59 @@ export async function runInit(args: string[]): Promise<number> {
 
   const managed: ManagedFile[] = [];
 
+  const isPartial = flags.hooksOnly || flags.mcpOnly || flags.skillsOnly;
   const runHooks = !flags.mcpOnly && !flags.skillsOnly;
   const runMcp = !flags.hooksOnly && !flags.skillsOnly;
   const runSkills = !flags.hooksOnly && !flags.mcpOnly;
 
   if (runHooks) installHooks(cwd, flags, managed);
-  if (runMcp) installMcp(cwd, flags, managed);
+  if (runMcp) installMcp(cwd, flags);
   if (runSkills) installSkills(cwd, flags, managed);
   installUserConfig(cwd, flags, managed);
   if (flags.docker) installDocker(cwd, flags, managed);
+  if (runHooks) installSettings(cwd, flags);
 
   if (!flags.dryRun) {
     const now = new Date().toISOString();
+
+    // Partial runs merge into the existing managedFiles list so that sibling
+    // entries (e.g. hooks when running --mcp-only) are not silently dropped.
+    let finalManaged = managed;
+    let installedAt = now;
+    let lastUpgradedAt = now;
+    // A partial run must NEVER advance state.version: that is the migration
+    // cursor, and stamping the CLI version here would teleport past pending
+    // migrations. Only full init (or first-ever init) stamps the CLI version.
+    let version = readPackageVersion();
+    if (isPartial && existing) {
+      const mergedMap = new Map(existing.managedFiles.map((f) => [f.path, f]));
+      for (const f of managed) {
+        mergedMap.set(f.path, f);
+      }
+      finalManaged = [...mergedMap.values()];
+      installedAt = existing.installedAt;
+      lastUpgradedAt = existing.lastUpgradedAt;
+      version = existing.version;
+    }
+
+    // .mcp.json is a shared, user-merged file (other MCP servers live in it
+    // too). It must not be in managedFiles: hash-drift is meaningless for it
+    // and uninstall must never delete it. Strip entries inherited from
+    // states written by older versions.
+    finalManaged = finalManaged.filter((f) => f.path !== '.mcp.json');
+
     const state: InstallState = {
-      version: readPackageVersion(),
-      installedAt: now,
-      lastUpgradedAt: now,
+      version,
+      installedAt,
+      lastUpgradedAt,
       installMode: flags.installMode,
       cliPathAtInstall: getCliAbsolutePath(),
-      managedFiles: managed,
+      managedFiles: finalManaged,
     };
     writeState(cwd, state);
-    process.stdout.write(`[init] wrote .memory-pkg/state.json (tracks ${managed.length} managed file${managed.length === 1 ? '' : 's'})\n`);
+    process.stdout.write(`[init] wrote .memory-pkg/state.json (tracks ${finalManaged.length} managed file${finalManaged.length === 1 ? '' : 's'})\n`);
   }
 
-  if (!flags.dryRun && runHooks) printSettingsSnippet();
   if (!flags.dryRun) printNextSteps(pm, flags.installMode, flags.docker);
 
   return 0;

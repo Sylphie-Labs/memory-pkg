@@ -228,7 +228,7 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
         .join(', ');
       lines.push(`Additional records exist beyond what is shown above for: ${over}. These were NOT loaded into context.`);
     }
-    lines.push('REQUIRED: Before answering, you MUST call mcp__memory-pkg__searchMemory({ query: "<entity>", limit: 10 }) for each entity above with overflow. Do not rely solely on the matches shown — the unshown records may contain the answer.');
+    lines.push('If the current question concerns one of the entities marked with overflow and the matches above look insufficient, call mcp__memory-pkg__searchMemory({ query: "<entity>", limit: 10 }) to retrieve the unshown records before answering.');
     lines.push('');
   }
 

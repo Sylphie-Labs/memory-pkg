@@ -60,11 +60,13 @@ function findTranscript(sessionId, projectDir) {
 function loadCursor(sessionId) {
   ensureDir(CURSOR_DIR);
   const file = path.join(CURSOR_DIR, `${sessionId}.json`);
-  if (!fs.existsSync(file)) return { lastUuid: null, byteOffset: 0 };
+  if (!fs.existsSync(file)) return { byteOffset: 0 };
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    // Older cursors also carried a vestigial lastUuid; only byteOffset matters.
+    return { byteOffset: typeof parsed.byteOffset === "number" ? parsed.byteOffset : 0 };
   } catch {
-    return { lastUuid: null, byteOffset: 0 };
+    return { byteOffset: 0 };
   }
 }
 
@@ -234,6 +236,13 @@ function parseTranscriptLine(line, projectPath) {
         } else if (block.type === "tool_use") {
           const toolName = block.name || "unknown";
           const input = block.input || {};
+          // Cap the stored payload: tool inputs (file writes, heredocs) can be
+          // hundreds of KB. Mirror the 8000-char cap used for tool_result.
+          const inputJson = JSON.stringify(input);
+          const payload =
+            inputJson.length <= 8000
+              ? { input }
+              : { input_truncated: true, input_preview: inputJson.slice(0, 8000) };
           events.push({
             ...base,
             event_type: "tool_call",
@@ -241,8 +250,8 @@ function parseTranscriptLine(line, projectPath) {
             tool_use_id: block.id || null,
             file_path: extractFilePath(input),
             summary: summarizeToolCall(toolName, input),
-            _body: JSON.stringify(input).slice(0, 400),
-            payload: { input },
+            _body: inputJson.slice(0, 400),
+            payload,
           });
         }
       }
@@ -261,11 +270,11 @@ function processTranscript(transcriptPath, projectPath, cursor) {
 
   // If file shrank (shouldn't happen, but defensive), reset.
   if (cursor.byteOffset > size) {
-    cursor = { lastUuid: null, byteOffset: 0 };
+    cursor = { byteOffset: 0 };
   }
 
   if (cursor.byteOffset === size) {
-    return { events: [], newOffset: size, lastUuid: cursor.lastUuid };
+    return { events: [], newOffset: size };
   }
 
   // Read from offset to end.
@@ -291,7 +300,6 @@ function processTranscript(transcriptPath, projectPath, cursor) {
     const newOffset = cursor.byteOffset + Buffer.byteLength(chunk.slice(0, consumed), "utf8");
 
     const events = [];
-    let lastUuid = cursor.lastUuid;
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
@@ -311,11 +319,10 @@ function processTranscript(transcriptPath, projectPath, cursor) {
           clean.transcript_uuid = `${clean.transcript_uuid}:${blockIdx}`;
         }
         events.push(clean);
-        if (clean.transcript_uuid) lastUuid = clean.transcript_uuid;
       });
     }
 
-    return { events, newOffset, lastUuid };
+    return { events, newOffset };
   } finally {
     fs.closeSync(fd);
   }
@@ -348,12 +355,12 @@ if (require.main === module) {
       if (!transcript) return process.exit(0);
 
       const cursor = loadCursor(sessionId);
-      const { events, newOffset, lastUuid } = processTranscript(transcript, PROJECT_DIR, cursor);
+      const { events, newOffset } = processTranscript(transcript, PROJECT_DIR, cursor);
 
       if (events.length > 0) {
         appendEvents(events);
       }
-      saveCursor(sessionId, { lastUuid, byteOffset: newOffset });
+      saveCursor(sessionId, { byteOffset: newOffset });
     } catch {
       // Never block.
     }

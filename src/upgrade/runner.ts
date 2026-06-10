@@ -22,15 +22,32 @@ export interface UpgradePlan {
 }
 
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((s) => parseInt(s, 10));
-  const pb = b.split('.').map((s) => parseInt(s, 10));
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? 0;
-    const y = pb[i] ?? 0;
+  // Semver-aware enough for our needs: numeric core compare, and a release
+  // outranks any prerelease of the same core (1.0.0 > 1.0.0-rc.1). Prerelease
+  // vs prerelease falls back to plain string comparison, which is correct for
+  // the rc.N / beta.N tags we actually publish.
+  const parse = (v: string): { nums: number[]; pre: string | null } => {
+    const hyphen = v.indexOf('-');
+    const core = hyphen === -1 ? v : v.slice(0, hyphen);
+    const pre = hyphen === -1 ? null : v.slice(hyphen + 1);
+    const nums = core.split('.').map((s) => {
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) ? n : 0;
+    });
+    return { nums, pre };
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  for (let i = 0; i < Math.max(pa.nums.length, pb.nums.length); i++) {
+    const x = pa.nums[i] ?? 0;
+    const y = pb.nums[i] ?? 0;
     if (x < y) return -1;
     if (x > y) return 1;
   }
-  return 0;
+  if (pa.pre === null && pb.pre === null) return 0;
+  if (pa.pre === null) return 1;
+  if (pb.pre === null) return -1;
+  return pa.pre < pb.pre ? -1 : pa.pre > pb.pre ? 1 : 0;
 }
 
 export function planMigrations(from: string, to: string): UpgradePlan {
@@ -74,6 +91,13 @@ export function planMigrations(from: string, to: string): UpgradePlan {
 export interface ApplyAllOptions {
   ctx: Omit<MigrationContext, 'state'> & { state: InstallState };
   plan: UpgradePlan;
+  /**
+   * Invoked with the updated InstallState after EACH successful migration so
+   * a crash mid-chain resumes from the last completed step instead of
+   * replaying already-applied migrations. Callers typically pass
+   * `(s) => writeState(cwd, s)`. Omit for dry runs.
+   */
+  persistState?: (state: InstallState) => void | Promise<void>;
 }
 
 export interface ApplyAllResult {
@@ -83,7 +107,7 @@ export interface ApplyAllResult {
 }
 
 export async function applyAll(opts: ApplyAllOptions): Promise<ApplyAllResult> {
-  const { plan, ctx } = opts;
+  const { plan, ctx, persistState } = opts;
   let state = { ...ctx.state };
   const results: ApplyAllResult['results'] = [];
 
@@ -97,6 +121,9 @@ export async function applyAll(opts: ApplyAllOptions): Promise<ApplyAllResult> {
       lastUpgradedAt: new Date().toISOString(),
       managedFiles: result.managedFiles,
     };
+    if (persistState) {
+      await persistState(state);
+    }
   }
 
   return { appliedCount: results.length, results, finalState: state };

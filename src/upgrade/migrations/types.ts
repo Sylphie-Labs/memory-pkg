@@ -21,6 +21,16 @@ export interface MigrationContext {
   force: boolean;
   /** Absolute path to the package root (where dist/ lives). Useful for resolving bundled templates. */
   packageRoot: string;
+  /**
+   * Optional database query function (wired from timescale-client by the
+   * upgrade CLI). May be undefined (DB not configured) and may THROW at call
+   * time (DB unreachable). Migrations that use it MUST catch failures and
+   * degrade to a warning in MigrationResult.warnings — an unreachable
+   * database must never abort a file-level upgrade. File changes and DB
+   * changes in one migration should be ordered files-first so a DB failure
+   * leaves a consistent, re-runnable state.
+   */
+  runQuery?: <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<T[]>;
 }
 
 export interface MigrationResult {

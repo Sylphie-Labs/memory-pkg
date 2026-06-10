@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       '\n' +
       'Memory operations:\n' +
       '  memory-pkg schema                              (init/migrate the hypertable + indexes)\n' +
-      '  memory-pkg ingest                              (flush buffer.jsonl to TimescaleDB)\n' +
+      '  memory-pkg ingest [--retry-failed]             (flush buffer.jsonl to TimescaleDB; --retry-failed re-queues the dead-letter file)\n' +
       '  memory-pkg search <query> [--limit N] [--session ID] [--type TYPE] [--since ISO]\n' +
       '  memory-pkg context <eventId> [--before N] [--after N]\n' +
       '  memory-pkg unwind <eventId> [--limit N]\n' +
@@ -169,8 +169,13 @@ async function main(): Promise<void> {
 
       case 'ingest': {
         const { ingest } = await import('../ingest/ingester.js');
-        const r = await ingest();
-        process.stdout.write(`ingested ${r.inserted} event(s)\n`);
+        const ingestArgs = [arg, ...rest].filter((x): x is string => Boolean(x));
+        const r = await ingest({ retryFailed: ingestArgs.includes('--retry-failed') });
+        process.stdout.write(
+          r.skipped === 'locked'
+            ? `ingest skipped: another ingest is running\n`
+            : `ingested ${r.inserted} event(s)\n`,
+        );
         break;
       }
 
@@ -215,9 +220,14 @@ async function main(): Promise<void> {
       }
 
       case 'inject': {
-        // Prompt text may span multiple words; re-assemble from positional arg + stdin fallback.
-        let prompt = arg ?? '';
-        if (!prompt && !process.stdin.isTTY) {
+        // Prompt is the positional arg, or read from stdin when the
+        // positional is '-' (or absent and stdin is piped). The '-' sentinel
+        // is what the memory-inject.cjs hook uses to avoid Windows argv limits.
+        const injectArgs = [arg, ...rest].filter((x): x is string => Boolean(x));
+        const injectFlags = parseFlags(injectArgs);
+        const positional = arg && arg !== '-' && !arg.startsWith('--') ? arg : '';
+        let prompt = positional;
+        if (!prompt && (arg === '-' || !process.stdin.isTTY)) {
           prompt = await new Promise<string>((resolve) => {
             let buf = '';
             process.stdin.on('data', (c) => (buf += c.toString('utf8')));
@@ -227,9 +237,9 @@ async function main(): Promise<void> {
         const { generateInjection } = await import('../inject/generate.js');
         const block = await generateInjection({
           query: prompt,
-          currentSessionId: flags.session,
-          limit: flags.limit ? parseInt(flags.limit, 10) : undefined,
-          transcriptPath: flags.transcript,
+          currentSessionId: injectFlags.session,
+          limit: injectFlags.limit ? parseInt(injectFlags.limit, 10) : undefined,
+          transcriptPath: injectFlags.transcript,
         });
         if (block) process.stdout.write(block + '\n');
         break;
