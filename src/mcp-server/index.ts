@@ -133,8 +133,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           type: 'text' as const,
           text:
             `Error executing ${name}: ${message}\n\n` +
-            `This may indicate the memory-pkg TimescaleDB is not running on localhost:5432. ` +
-            `Start it with \`pnpm neo4j:up\` (compose brings up both services) or check .claude/memory/ buffer.`,
+            `This may indicate the memory-pkg TimescaleDB is not running (default localhost:5432). ` +
+            `Start it with \`docker compose -f docker-compose.memory-pkg.yml up -d\`, or check the .claude/memory/ buffer.`,
         },
       ],
       isError: true,

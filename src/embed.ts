@@ -14,7 +14,10 @@
 
 import { runQuery } from './timescale-client.js';
 
-const MODEL = process.env.DRIFT_MEMORY_EMBED_MODEL || 'Xenova/bge-small-en-v1.5';
+const MODEL =
+  process.env.MEMORY_PKG_EMBED_MODEL ||
+  process.env.DRIFT_MEMORY_EMBED_MODEL ||
+  'Xenova/bge-small-en-v1.5';
 export const EMBED_DIM = 384;
 const MAX_EMBED_CHARS = 2000;
 

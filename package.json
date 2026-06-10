@@ -73,7 +73,6 @@
   "dependencies": {
     "@huggingface/transformers": "^3",
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "neo4j-driver": "^5",
     "pg": "^8.13.0"
   },
   "devDependencies": {

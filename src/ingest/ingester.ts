@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getPool, closePool } from '../timescale-client.js';
 import { deriveSubsystem } from '../subsystem.js';
+import { embedMany, toVectorLiteral } from '../embed.js';
 
 const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 const BUFFER_DIR = path.join(PROJECT_DIR, '.claude', 'memory');
@@ -63,21 +64,52 @@ function parseLines(content: string): BufferEvent[] {
   return events;
 }
 
+/**
+ * Embed each event's text (excerpt ?? summary ?? search_text) so the
+ * embedding tier can do semantic KNN. tool_result events are skipped
+ * (the embedding tier filters them out anyway and they're noisy/large).
+ * Returns a pgvector literal string per event, or null where we skip or
+ * if embedding fails — a vector problem must never drop the event.
+ */
+async function computeEmbeddings(events: BufferEvent[]): Promise<(string | null)[]> {
+  const out: (string | null)[] = new Array(events.length).fill(null);
+  const idxs: number[] = [];
+  const texts: string[] = [];
+  events.forEach((e, i) => {
+    if (e.event_type === 'tool_result') return;
+    const t = ((e.excerpt ?? e.summary ?? e.search_text) ?? '').trim();
+    if (!t) return;
+    idxs.push(i);
+    texts.push(t);
+  });
+  if (texts.length === 0) return out;
+  try {
+    const vecs = await embedMany(texts);
+    for (let k = 0; k < idxs.length; k++) out[idxs[k]] = toVectorLiteral(vecs[k]);
+  } catch (err) {
+    process.stderr.write(
+      `[ingester] embedding failed, inserting without vectors: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+  }
+  return out;
+}
+
 async function insertBatch(events: BufferEvent[]): Promise<number> {
   if (events.length === 0) return 0;
+  const embeddings = await computeEmbeddings(events);
   const pool = getPool();
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    const COLS = 13;
+    const COLS = 14;
     const values: unknown[] = [];
     const placeholders: string[] = [];
     events.forEach((e, i) => {
       const base = i * COLS;
       placeholders.push(
-        `($${base + 1}::timestamptz, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}::jsonb, $${base + 12}, $${base + 13})`
+        `($${base + 1}::timestamptz, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}::jsonb, $${base + 12}, $${base + 13}, $${base + 14}::vector)`
       );
       values.push(
         e.ts,
@@ -93,6 +125,7 @@ async function insertBatch(events: BufferEvent[]): Promise<number> {
         e.payload != null ? JSON.stringify(e.payload) : null,
         e.transcript_uuid ?? null,
         deriveSubsystem(e.file_path),
+        embeddings[i],
       );
     });
 
@@ -101,7 +134,7 @@ async function insertBatch(events: BufferEvent[]): Promise<number> {
     const sql = `
       INSERT INTO memory_events
         (ts, session_id, project_path, event_type, tool_name, tool_use_id,
-         file_path, summary, excerpt, search_text, payload, transcript_uuid, subsystem)
+         file_path, summary, excerpt, search_text, payload, transcript_uuid, subsystem, embedding)
       VALUES ${placeholders.join(', ')}
       ON CONFLICT DO NOTHING
     `;

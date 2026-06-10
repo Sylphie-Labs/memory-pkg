@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- **Silent event loss on multi-event transcript lines.** Events parsed from a single transcript line (assistant text + multiple `tool_use` blocks, parallel tool calls, or multiple `tool_result` blocks) shared one `transcript_uuid`/`ts` and collided on the `(session_id, transcript_uuid, ts)` unique index — all but one were dropped by `ON CONFLICT DO NOTHING`. Multi-event lines now suffix `transcript_uuid` with the block index; single-event lines keep the bare uuid for backward-compatibility.
+- Rationale prompt no longer hardcodes the `drift-detector` project name; it is derived from the repo directory.
+- Config cache now keys on the config-file mtime, so the long-lived MCP server picks up `.memory-pkg/config.json` edits without a restart.
+- Corrected a stale MCP error hint (`pnpm neo4j:up` → docker compose) and README version/status/link drift.
+
+### Added
+- **Embeddings computed at ingest.** The ingester now embeds each non-`tool_result` event (`bge-small-en-v1.5`) into the `vector(384)` column, degrading to `NULL` (never dropping the event) on embedding failure.
+- **Semantic retrieval is live.** The embedding tier is promoted to the rescue slot — it runs an HNSW cosine KNN only when the lexical fast path is weak (merged score < 0.7).
+- **Automatic rationale synthesis.** The `Stop`-hook snippet chains `rationale` after `ingest`, so "why" events are created in the background after every session stop (previously manual-only).
+- Centralized Postgres connection resolution (`getDatabaseConfig`): env vars > `.memory-pkg/config.json` `database` block > defaults, shared across CLI, hooks, MCP server, and doctor.
+- `inject-errors.log` diagnostic trail plus a `doctor` inject-path check that surfaces otherwise-silent retrieval failures.
+- Entity tier dampens transcript-only entities (weight 0.6) so recent debugging context doesn't crowd out the actual question.
+- `MEMORY_PKG_EMBED_MODEL` is now honored (in addition to the legacy `DRIFT_MEMORY_EMBED_MODEL`).
+
+### Removed
+- **Knowledge-graph (kg) retrieval tier and the `neo4j-driver` dependency.** The tier targeted a separate `codebase-pkg` Neo4j instance that `init`/`--docker` never provisioned; it was dormant by default and pulled a heavy runtime dependency into every install.
+
 ## [0.1.0] — 2026-05-12
 
 Initial public release. Extracted from `drift-detector/packages/memory-pkg` and made repo-agnostic.

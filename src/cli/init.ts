@@ -283,8 +283,9 @@ function printSettingsSnippet(): void {
             },
             {
               type: 'command',
-              command: 'npx -y @sylphie-labs/memory-pkg ingest >/dev/null 2>&1 || true',
-              timeout: 30,
+              command:
+                'npx -y @sylphie-labs/memory-pkg ingest >/dev/null 2>&1 && npx -y @sylphie-labs/memory-pkg rationale --limit 20 >/dev/null 2>&1 || true',
+              timeout: 120,
               async: true,
             },
           ],
@@ -376,7 +377,7 @@ function printNextSteps(pm: string, mode: InstallMode, didDocker: boolean): void
   } else {
     process.stdout.write(`  ${n++}. memory-pkg schema\n`);
   }
-  process.stdout.write(`  ${n++}. Start a Claude Code session; capture, ingest, and injection are wired\n`);
+  process.stdout.write(`  ${n++}. Start a Claude Code session; capture, ingest, rationale, and injection are wired\n`);
   process.stdout.write(`\nModel choices for \`claude -p\` spawns and the Postgres connection live in\n`);
   process.stdout.write(`.memory-pkg/config.json (override via MEMORY_PKG_* env vars).\n`);
   process.stdout.write(`\nInstall mode: ${mode}${pm !== 'unknown' ? `   |   package manager: ${pm}` : ''}\n`);
