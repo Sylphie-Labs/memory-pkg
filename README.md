@@ -4,7 +4,7 @@
 
 Every Claude Code session leaves a transcript JSONL on disk. `memory-pkg` reads those transcripts, indexes them in TimescaleDB, and auto-injects relevant historical events into every new user prompt. The agent stops asking the same clarifying question twice; the developer stops being the agent's notebook.
 
-> Status: 0.1.0 — initial public release. The capture, ingestion, and SQL-only retrieval path are production-shape; semantic/classifier/KG retrieval tiers are dormant by default (see "Architecture" below). No test suite yet.
+> Status: 0.2.0 — the capture, ingestion, and SQL-only retrieval path (trigram + entity tiers) are production-shape; the embedding, classifier, and KG retrieval tiers are dormant by default (see "How it works" below). No test suite yet.
 
 ## License
 
@@ -181,4 +181,4 @@ Legacy `DRIFT_MEMORY_*` env vars are still recognized for retrieval-tier toggles
 
 ## See also
 
-- [`@sylphie-labs/codebase-pkg`](https://github.com/jctisdale/codebase-pkg) — companion package addressing the **structural** side of agent forgetting (codebase knowledge graph). `memory-pkg` handles the **episodic** side (the work itself).
+- [`@sylphie-labs/codebase-pkg`](https://github.com/Sylphie-Labs/codebase-pkg) — companion package addressing the **structural** side of agent forgetting (codebase knowledge graph). `memory-pkg` handles the **episodic** side (the work itself).

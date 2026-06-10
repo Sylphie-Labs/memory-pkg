@@ -19,9 +19,15 @@
  *
  * Env toggles:
  *   DRIFT_MEMORY_TIER_ENTITY_DISABLED=1
- *   DRIFT_MEMORY_ENTITY_MAX=N       entity cap (default 8)
- *   DRIFT_MEMORY_ENTITY_PER=N       events per entity (default 2)
- *   DRIFT_MEMORY_TRANSCRIPT_TAIL=N  transcript lines to scan (default 20)
+ *   DRIFT_MEMORY_ENTITY_MAX=N             entity cap (default 8)
+ *   DRIFT_MEMORY_ENTITY_PER=N             events per entity (default 2)
+ *   DRIFT_MEMORY_TRANSCRIPT_TAIL=N        transcript lines to scan (default 20)
+ *   DRIFT_MEMORY_ENTITY_TRANSCRIPT_WEIGHT=0.6
+ *     Dampening factor for candidates surfaced by entities that appear only
+ *     in the recent transcript (not the current prompt). Default 0.6 means
+ *     transcript-only entities still contribute but lose merge-tier ties to
+ *     topical retrieval — keeps "recent debugging" from crowding out the
+ *     actual question. Set to 1 to disable dampening.
  */
 
 import { readFileSync } from 'node:fs';
@@ -218,6 +224,16 @@ export const entityTier: Tier = async (input: TierInput): Promise<TierResult> =>
   const queried = ranked.slice(0, maxEntities);
   const dropped = ranked.slice(maxEntities);
 
+  // Entities not in the current prompt are "transcript-only" — they describe
+  // what we were recently touching, not what's being asked about now. Their
+  // candidates are dampened so they fall behind topical retrieval at merge time.
+  const promptEntitySet = new Set(promptEntities);
+  const transcriptWeight = (() => {
+    const raw = parseFloat(process.env.DRIFT_MEMORY_ENTITY_TRANSCRIPT_WEIGHT || '0.6');
+    if (!Number.isFinite(raw) || raw <= 0) return 0.6;
+    return Math.min(raw, 1);
+  })();
+
   if (queried.length === 0) {
     return {
       tier: TIER_NAME,
@@ -244,15 +260,17 @@ export const entityTier: Tier = async (input: TierInput): Promise<TierResult> =>
   const overflow: Record<string, number> = {};
   for (const hit of hits) {
     if (hit.rows.length > perEntity) overflow[hit.entity] = hit.rows.length;
+    const transcriptOnly = !promptEntitySet.has(hit.entity);
+    const weight = transcriptOnly ? transcriptWeight : 1;
     for (const row of hit.rows.slice(0, perEntity)) {
-      const score = Number(row.score);
+      const score = Number(row.score) * weight;
       const existing = byId.get(row.event_id);
       if (!existing || score > existing.score) {
         byId.set(row.event_id, {
           event_id: row.event_id,
           score,
           source_tier: TIER_NAME,
-          rationale: `entity:${hit.entity}`,
+          rationale: transcriptOnly ? `entity:${hit.entity}[transcript]` : `entity:${hit.entity}`,
         });
       }
     }

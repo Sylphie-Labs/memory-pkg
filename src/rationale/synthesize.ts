@@ -13,10 +13,16 @@
  */
 
 import { spawn } from 'child_process';
+import * as path from 'path';
 import { runQuery } from '../timescale-client.js';
 import { getModelFor } from '../config.js';
 
 const CLAUDE_BIN = process.env.MEMORY_PKG_CLAUDE_BIN ?? 'claude';
+
+// Project name for the rationale prompt, derived from the consumer repo
+// directory. CLAUDE_PROJECT_DIR is set by the Claude Code hook; fall back
+// to the current working directory for direct CLI runs.
+const PROJECT_NAME = path.basename(process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
 
 interface TurnEvent {
   event_id: string;
@@ -129,7 +135,7 @@ function buildPrompt(turn: Turn): string {
     .map((e) => `- ${e.summary ?? e.tool_name ?? 'unknown'}`)
     .join('\n');
 
-  return `A developer is working with Claude Code on the "drift-detector" project.
+  return `A developer is working with Claude Code on the "${PROJECT_NAME}" project.
 
 ## User prompt
 ${userText.slice(0, 4000)}

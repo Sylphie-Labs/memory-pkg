@@ -368,7 +368,7 @@ function printNextSteps(pm: string, mode: InstallMode, didDocker: boolean): void
   if (didDocker) {
     process.stdout.write(`  ${n++}. docker compose -f docker-compose.memory-pkg.yml up -d\n`);
   } else {
-    process.stdout.write(`  ${n++}. Ensure TimescaleDB is running on localhost:5432 (or set MEMORY_PKG_PG_*)\n`);
+    process.stdout.write(`  ${n++}. Ensure TimescaleDB is running on localhost:5432 (override host/port/creds in .memory-pkg/config.json or MEMORY_PKG_PG_*)\n`);
   }
   process.stdout.write(`  ${n++}. Merge the printed settings.json snippet into .claude/settings.json\n`);
   if (mode === 'local') {
@@ -377,8 +377,8 @@ function printNextSteps(pm: string, mode: InstallMode, didDocker: boolean): void
     process.stdout.write(`  ${n++}. memory-pkg schema\n`);
   }
   process.stdout.write(`  ${n++}. Start a Claude Code session; capture, ingest, and injection are wired\n`);
-  process.stdout.write(`\nModel choices for \`claude -p\` spawns live in .memory-pkg/config.json (override via\n`);
-  process.stdout.write(`MEMORY_PKG_{RATIONALE,CLASSIFY,RERANK}_MODEL env vars).\n`);
+  process.stdout.write(`\nModel choices for \`claude -p\` spawns and the Postgres connection live in\n`);
+  process.stdout.write(`.memory-pkg/config.json (override via MEMORY_PKG_* env vars).\n`);
   process.stdout.write(`\nInstall mode: ${mode}${pm !== 'unknown' ? `   |   package manager: ${pm}` : ''}\n`);
 }
 

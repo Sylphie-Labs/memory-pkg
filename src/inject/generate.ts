@@ -16,6 +16,7 @@ import { getFastPathTiers, getRescueTiers } from './tiers/index.js';
 import type { Candidate } from './tiers/types.js';
 import { mergeCandidates, applyDiversity, loadMergerConfig, type MergedCandidate } from './merger.js';
 import { appendTrace, type TierTrace, type FinalPick } from './rationale-log.js';
+import { appendInjectError } from './error-log.js';
 import type { TierResult } from './tiers/types.js';
 
 // When fast-path candidates have at least one score at/above this threshold,
@@ -114,7 +115,15 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
   }
 
   const merged = mergeCandidates(results, mergerConfig);
-  if (merged.length === 0) return '';
+  if (merged.length === 0) {
+    appendInjectError({
+      query,
+      sessionId: opts.currentSessionId ?? null,
+      results,
+      stage: 'no-merged',
+    });
+    return '';
+  }
 
   const rows = await fetchEventsByIds(merged.map((c) => c.event_id));
 
@@ -172,7 +181,15 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
     }
   }
 
-  if (ranked.length === 0) return '';
+  if (ranked.length === 0) {
+    appendInjectError({
+      query,
+      sessionId: opts.currentSessionId ?? null,
+      results,
+      stage: 'no-ranked',
+    });
+    return '';
+  }
 
   ranked.sort((a, b) => {
     if (b.relevance !== a.relevance) return b.relevance - a.relevance;
@@ -207,9 +224,9 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
       const over = Object.entries(meta.overflow)
         .map(([e, n]) => `${e} (${n})`)
         .join(', ');
-      lines.push(`More matches available for: ${over}`);
+      lines.push(`Additional records exist beyond what is shown above for: ${over}. These were NOT loaded into context.`);
     }
-    lines.push('To widen: mcp__memory-pkg__searchMemory({ query: "<entity>", limit: 10 })');
+    lines.push('REQUIRED: Before answering, you MUST call mcp__memory-pkg__searchMemory({ query: "<entity>", limit: 10 }) for each entity above with overflow. Do not rely solely on the matches shown — the unshown records may contain the answer.');
     lines.push('');
   }
 
