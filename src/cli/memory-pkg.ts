@@ -44,7 +44,7 @@ async function main(): Promise<void> {
       'Usage:\n' +
       '\n' +
       'Setup & lifecycle:\n' +
-      '  memory-pkg init [--local] [--docker] [--classifier-context]\n' +
+      '  memory-pkg init [--local] [--docker]\n' +
       '  memory-pkg upgrade [--plan] [--confirm] [--force]   Bring repo to current version\n' +
       '  memory-pkg status                          Show install state and drift\n' +
       '  memory-pkg doctor [--no-network]           Run structural checks\n' +

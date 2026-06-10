@@ -11,9 +11,7 @@
  *      local-node_modules fallback are also honored.
  *   2. The memory-pkg MCP server stanza in .mcp.json.
  *   3. A .claude/skills/temporal-recall/SKILL.md template.
- *   4. Optionally a .memory-pkg/classifier-context.md stub
- *      (--classifier-context).
- *   5. Optionally a docker-compose.memory-pkg.yml (--docker).
+ *   4. Optionally a docker-compose.memory-pkg.yml (--docker).
  *
  * Prints a settings.json snippet to merge by hand (settings.json is usually
  * customized; we don't risk corrupting it).
@@ -42,7 +40,6 @@ type Flags = {
   dryRun: boolean;
   force: boolean;
   docker: boolean;
-  classifierContext: boolean;
   hooksOnly: boolean;
   mcpOnly: boolean;
   skillsOnly: boolean;
@@ -55,7 +52,6 @@ function parseFlags(args: string[]): Flags {
     dryRun: args.includes('--dry-run'),
     force: args.includes('--force'),
     docker: args.includes('--docker'),
-    classifierContext: args.includes('--classifier-context'),
     hooksOnly: args.includes('--hooks-only'),
     mcpOnly: args.includes('--mcp-only'),
     skillsOnly: args.includes('--skills-only'),
@@ -283,8 +279,9 @@ function printSettingsSnippet(): void {
             },
             {
               type: 'command',
-              command: 'npx -y @sylphie-labs/memory-pkg ingest >/dev/null 2>&1 || true',
-              timeout: 30,
+              command:
+                'npx -y @sylphie-labs/memory-pkg ingest >/dev/null 2>&1 && npx -y @sylphie-labs/memory-pkg rationale --limit 20 >/dev/null 2>&1 || true',
+              timeout: 120,
               async: true,
             },
           ],
@@ -301,28 +298,6 @@ function installUserConfig(cwd: string, flags: Flags, managed: ManagedFile[]): v
   const content = JSON.stringify(defaultUserConfig(), null, 2) + '\n';
   const result = writeFileContent(destPath, content, flags);
   process.stdout.write(`[init] config: ${result} ${destRel}\n`);
-  if (result === 'wrote' || (result === 'skipped' && fs.existsSync(destPath))) {
-    managed.push({ path: destRel, installedHash: hashFile(destPath) });
-  }
-}
-
-function installClassifierContext(cwd: string, flags: Flags, managed: ManagedFile[]): void {
-  const destRel = normalizePath(path.join('.memory-pkg', 'classifier-context.md'));
-  const destPath = path.join(cwd, destRel);
-  const content =
-    `# Memory-pkg classifier context\n\n` +
-    `Read by the classifier retrieval tier (dormant by default) to give Haiku\n` +
-    `project-specific context when classifying incoming prompts. Replace this\n` +
-    `stub with a description of your codebase: repo layout, key subsystems,\n` +
-    `naming conventions — anything that helps target memory retrieval.\n\n` +
-    `## Example layout (edit me)\n\n` +
-    `- \`src/api/\` — HTTP route handlers and controllers\n` +
-    `- \`src/services/\` — domain services\n` +
-    `- \`src/db/\` — database clients and migrations\n` +
-    `- \`docs/\` — design documents\n\n` +
-    `Override the path with the MEMORY_PKG_CLASSIFIER_CONTEXT_FILE env var.\n`;
-  const result = writeFileContent(destPath, content, flags);
-  process.stdout.write(`[init] classifier-context: ${result} ${destRel}\n`);
   if (result === 'wrote' || (result === 'skipped' && fs.existsSync(destPath))) {
     managed.push({ path: destRel, installedHash: hashFile(destPath) });
   }
@@ -368,7 +343,7 @@ function printNextSteps(pm: string, mode: InstallMode, didDocker: boolean): void
   if (didDocker) {
     process.stdout.write(`  ${n++}. docker compose -f docker-compose.memory-pkg.yml up -d\n`);
   } else {
-    process.stdout.write(`  ${n++}. Ensure TimescaleDB is running on localhost:5432 (or set MEMORY_PKG_PG_*)\n`);
+    process.stdout.write(`  ${n++}. Ensure TimescaleDB is running on localhost:5432 (override host/port/creds in .memory-pkg/config.json or MEMORY_PKG_PG_*)\n`);
   }
   process.stdout.write(`  ${n++}. Merge the printed settings.json snippet into .claude/settings.json\n`);
   if (mode === 'local') {
@@ -376,9 +351,9 @@ function printNextSteps(pm: string, mode: InstallMode, didDocker: boolean): void
   } else {
     process.stdout.write(`  ${n++}. memory-pkg schema\n`);
   }
-  process.stdout.write(`  ${n++}. Start a Claude Code session; capture, ingest, and injection are wired\n`);
-  process.stdout.write(`\nModel choices for \`claude -p\` spawns live in .memory-pkg/config.json (override via\n`);
-  process.stdout.write(`MEMORY_PKG_{RATIONALE,CLASSIFY,RERANK}_MODEL env vars).\n`);
+  process.stdout.write(`  ${n++}. Start a Claude Code session; capture, ingest, rationale, and injection are wired\n`);
+  process.stdout.write(`\nModel choices for \`claude -p\` spawns and the Postgres connection live in\n`);
+  process.stdout.write(`.memory-pkg/config.json (override via MEMORY_PKG_* env vars).\n`);
   process.stdout.write(`\nInstall mode: ${mode}${pm !== 'unknown' ? `   |   package manager: ${pm}` : ''}\n`);
 }
 
@@ -408,7 +383,6 @@ export async function runInit(args: string[]): Promise<number> {
   if (runMcp) installMcp(cwd, flags, managed);
   if (runSkills) installSkills(cwd, flags, managed);
   installUserConfig(cwd, flags, managed);
-  if (flags.classifierContext) installClassifierContext(cwd, flags, managed);
   if (flags.docker) installDocker(cwd, flags, managed);
 
   if (!flags.dryRun) {

@@ -11,21 +11,18 @@ import type { Tier } from './types.js';
 import { trigramTier } from './trigram.js';
 import { entityTier } from './entity.js';
 import { embeddingTier } from './embedding.js';
-import { classifierTier } from './classifier.js';
-import { kgTier } from './kg.js';
 
 export * from './types.js';
 
-// Trigram + entity pipeline. Embedding/classifier/kg tiers remain imported
-// but dormant — flip them back into the arrays below to re-enable.
-void embeddingTier;
-void classifierTier;
-void kgTier;
+// Fast path: cheap lexical tiers (trigram + entity) run in parallel on every
+// prompt. Rescue: the semantic embedding tier runs only when the fast path is
+// weak (see FASTPATH_STRONG_THRESHOLD in generate.ts), so the cold-start model
+// load is paid rarely rather than on every prompt.
 
 export function getFastPathTiers(): Tier[] {
   return [trigramTier, entityTier];
 }
 
 export function getRescueTiers(): Tier[] {
-  return [];
+  return [embeddingTier];
 }

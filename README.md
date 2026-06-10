@@ -4,7 +4,7 @@
 
 Every Claude Code session leaves a transcript JSONL on disk. `memory-pkg` reads those transcripts, indexes them in TimescaleDB, and auto-injects relevant historical events into every new user prompt. The agent stops asking the same clarifying question twice; the developer stops being the agent's notebook.
 
-> Status: 0.1.0 — initial public release. The capture, ingestion, and SQL-only retrieval path are production-shape; semantic/classifier/KG retrieval tiers are dormant by default (see "Architecture" below). No test suite yet.
+> Status: 0.3.0 — capture, ingestion, and the lexical fast path (trigram + entity) are production-shape. Embeddings are now computed at ingest and the semantic tier runs as a rescue pass when the fast path is weak. The dormant classifier and Neo4j knowledge-graph tiers were removed in this version. A starter test suite (vitest) covers the core pure logic, the transcript-capture collision fix, and the embedding skip/fallback path.
 
 ## License
 
@@ -61,7 +61,7 @@ The `memory-inject.cjs` hook is rendered with the package's absolute path baked 
 ## Lifecycle
 
 ```bash
-memory-pkg init       [--local] [--docker] [--classifier-context] [--force] [--dry-run]
+memory-pkg init       [--local] [--docker] [--force] [--dry-run]
 memory-pkg upgrade    [--plan] [--confirm] [--force]
 memory-pkg status                                # show install state + drift
 memory-pkg doctor     [--no-network]             # structural checks
@@ -100,7 +100,7 @@ memory-pkg uninstall  --confirm
 │  Partial index on (subsystem, ts)                   │
 │  Unique on (session_id, transcript_uuid, ts)        │
 └──┬──────────────────────────────────────────────────┘
-   │ Multi-tier retrieval (trigram + entity, by default)
+   │ Multi-tier retrieval (trigram + entity fast path; embedding rescue)
    ▼
 ┌─ <memory-context> block (up to 4 KB) ────────┐
 │  Up to 3 prior events ranked by similarity   │
@@ -108,7 +108,7 @@ memory-pkg uninstall  --confirm
 └──────────────────────────────────────────────┘
 ```
 
-The fast path is plain SQL trigram search against a Postgres GIN index, plus an entity tier that extracts identifiers from the prompt and the last 20 lines of the active transcript. For well-formed prompts this short-circuits the rest of the pipeline at score ≥ 0.7. The embedding, classifier, and knowledge-graph tiers exist in the code but are dormant in the default registry — flip them on by editing `src/inject/tiers/index.ts` if you fork.
+The fast path is plain SQL trigram search against a Postgres GIN index, plus an entity tier that extracts identifiers from the prompt and the last 20 lines of the active transcript. For well-formed prompts this short-circuits the rest of the pipeline at score ≥ 0.7. When the fast path is weak, a semantic **rescue** tier embeds the query (`bge-small-en-v1.5`) and runs an HNSW cosine KNN against the embeddings computed at ingest — so the cold-start model load is paid only on hard prompts, not every turn. The tier registry lives in `src/inject/tiers/index.ts` if you fork and want to add your own.
 
 ## MCP tools
 
@@ -121,9 +121,9 @@ The fast path is plain SQL trigram search against a Postgres GIN index, plus an 
 
 ## Rationale synthesis
 
-`memory-pkg rationale` compresses each turn into a 2–3 sentence "why" event at ingest time, so future fuzzy searches for *"why did we change X?"* match the reasoning instead of the actions. One Haiku call per turn at ingest, amortized over every future retrieval. Uses the local `claude` CLI under Max OAuth; no API key consumed in the default setup.
+Rationale synthesis compresses each turn into a 2–3 sentence "why" event, so future fuzzy searches for *"why did we change X?"* match the reasoning instead of the actions. The installed `Stop` hook runs it automatically — chained after ingest, in the background — so it costs one Haiku call per new turn, is idempotent, and is amortized over every future retrieval. Uses the local `claude` CLI under Max OAuth; no API key consumed in the default setup.
 
-Run on demand:
+You can also run it on demand:
 
 ```bash
 npx memory-pkg rationale --limit 50
@@ -133,7 +133,7 @@ npx memory-pkg rationale --limit 50
 
 ```bash
 # Lifecycle
-memory-pkg init        [--local] [--docker] [--classifier-context] [--force] [--dry-run]
+memory-pkg init        [--local] [--docker] [--force] [--dry-run]
 memory-pkg upgrade     [--plan] [--confirm] [--force] [--verbose]
 memory-pkg status
 memory-pkg doctor      [--no-network]
@@ -165,7 +165,6 @@ memory-pkg tune                   # summarize the rationale-log telemetry
 | `MEMORY_PKG_PG_PASSWORD` | `memory-pkg-local` | DB password |
 | `MEMORY_PKG_PG_DATABASE` | `memory` | DB name |
 | `MEMORY_PKG_REPO_ANCHOR` | (auto via `git rev-parse --show-toplevel`) | Absolute path of your repo root for subsystem derivation |
-| `MEMORY_PKG_CLASSIFIER_CONTEXT_FILE` | `.memory-pkg/classifier-context.md` | Path to classifier-tier project-context prompt |
 | `MEMORY_PKG_HOOK_TIMEOUT_MS` | `30000` | Injection-hook timeout (always fails open on overrun) |
 | `MEMORY_PKG_EMBED_MODEL` | `Xenova/bge-small-en-v1.5` | Embedding model used by the embedding tier |
 | `MEMORY_PKG_RATIONALE_MODEL` | `claude-haiku-4-5-20251001` | Model for rationale synthesis |
@@ -176,9 +175,9 @@ Legacy `DRIFT_MEMORY_*` env vars are still recognized for retrieval-tier toggles
 
 - Cross-project memory federation
 - Continuous aggregates / compression on old TimescaleDB chunks
-- Automatic embedding backfill (the helper exists but must be run deliberately)
-- Test suite
+- Embedding backfill for rows ingested before 0.2.0 (new events embed at ingest; `backfill-embeddings` fills legacy rows on demand)
+- Full test coverage (a starter vitest suite exists — run `npm test`; the `.cjs` capture hook and merger remain uncovered)
 
 ## See also
 
-- [`@sylphie-labs/codebase-pkg`](https://github.com/jctisdale/codebase-pkg) — companion package addressing the **structural** side of agent forgetting (codebase knowledge graph). `memory-pkg` handles the **episodic** side (the work itself).
+- [`@sylphie-labs/codebase-pkg`](https://github.com/Sylphie-Labs/codebase-pkg) — companion package addressing the **structural** side of agent forgetting (codebase knowledge graph). `memory-pkg` handles the **episodic** side (the work itself).

@@ -3,15 +3,18 @@
  *
  * Singleton pg Pool. All memory queries flow through here.
  *
- * Environment overrides:
- *   MEMORY_PKG_PG_HOST     defaults to localhost
- *   MEMORY_PKG_PG_PORT     defaults to 5432
- *   MEMORY_PKG_PG_USER     defaults to memory-pkg
- *   MEMORY_PKG_PG_PASSWORD defaults to memory-pkg-local
- *   MEMORY_PKG_PG_DATABASE defaults to memory
+ * Connection settings are resolved by getDatabaseConfig() in config.ts:
+ *   MEMORY_PKG_PG_HOST / PORT / USER / PASSWORD / DATABASE env vars win, then
+ *   .memory-pkg/config.json `database` block, then built-in defaults
+ *   (localhost:5432, user=memory-pkg, db=memory).
+ *
+ * This means a non-default port set in config.json once propagates to every
+ * code path automatically — CLI, hooks, MCP server, doctor — without having
+ * to be templated into hook command lines (where it's easy to forget).
  */
 
 import pg from 'pg';
+import { getDatabaseConfig } from './config.js';
 
 const { Pool } = pg;
 
@@ -19,12 +22,13 @@ let _pool: pg.Pool | null = null;
 
 export function getPool(): pg.Pool {
   if (_pool === null) {
+    const db = getDatabaseConfig();
     _pool = new Pool({
-      host: process.env.MEMORY_PKG_PG_HOST ?? 'localhost',
-      port: parseInt(process.env.MEMORY_PKG_PG_PORT ?? '5432', 10),
-      user: process.env.MEMORY_PKG_PG_USER ?? 'memory-pkg',
-      password: process.env.MEMORY_PKG_PG_PASSWORD ?? 'memory-pkg-local',
-      database: process.env.MEMORY_PKG_PG_DATABASE ?? 'memory',
+      host: db.host,
+      port: db.port,
+      user: db.user,
+      password: db.password,
+      database: db.database,
       max: 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,

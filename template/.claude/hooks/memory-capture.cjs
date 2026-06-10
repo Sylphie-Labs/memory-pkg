@@ -2,7 +2,7 @@
 /**
  * memory-capture.cjs -- Stop hook that reads the Claude Code session transcript
  * tail and emits events to the local memory buffer for later ingestion into
- * TimescaleDB by @drift/memory-pkg.
+ * TimescaleDB by @sylphie-labs/memory-pkg.
  *
  * Zero dependencies. Reads the official transcript JSONL at:
  *   ~/.claude/projects/<sanitized-project-path>/<session-id>.jsonl
@@ -292,19 +292,27 @@ function processTranscript(transcriptPath, projectPath, cursor) {
 
     const events = [];
     let lastUuid = cursor.lastUuid;
-    let skipUntilPastCursor = !!cursor.lastUuid && false; // only used when offset lost
-
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       const parsed = parseTranscriptLine(trimmed, projectPath);
-      for (const evt of parsed) {
+      parsed.forEach((evt, blockIdx) => {
         const { _body, ...clean } = evt;
         clean.search_text = buildSearchText(evt);
         clean.excerpt = buildExcerpt(evt);
+        // A single transcript line can yield multiple events (e.g. assistant
+        // text + several tool_use blocks, or parallel tool calls). They share
+        // the line's uuid and timestamp, so without disambiguation they collide
+        // on the (session_id, transcript_uuid, ts) unique index and all but one
+        // are silently dropped by ON CONFLICT DO NOTHING. Suffix the block index
+        // for multi-event lines; single-event lines keep the bare uuid to remain
+        // backward-compatible with rows already ingested under the old scheme.
+        if (clean.transcript_uuid && parsed.length > 1) {
+          clean.transcript_uuid = `${clean.transcript_uuid}:${blockIdx}`;
+        }
         events.push(clean);
         if (clean.transcript_uuid) lastUuid = clean.transcript_uuid;
-      }
+      });
     }
 
     return { events, newOffset, lastUuid };
@@ -313,28 +321,42 @@ function processTranscript(transcriptPath, projectPath, cursor) {
   }
 }
 
+// ------------ exports (for unit tests) ------------
+// When required as a module, expose the pure functions and run nothing.
+module.exports = {
+  parseTranscriptLine,
+  processTranscript,
+  buildSearchText,
+  buildExcerpt,
+  summarizeToolCall,
+  sanitizeProjectPath,
+};
+
 // ------------ main ------------
+// Only run the hook when executed directly (node memory-capture.cjs), not
+// when required by a test.
+if (require.main === module) {
+  let input = "";
+  process.stdin.on("data", (c) => (input += c));
+  process.stdin.on("end", () => {
+    try {
+      const payload = JSON.parse(input || "{}");
+      const sessionId = payload.session_id;
+      if (!sessionId) return process.exit(0);
 
-let input = "";
-process.stdin.on("data", (c) => (input += c));
-process.stdin.on("end", () => {
-  try {
-    const payload = JSON.parse(input || "{}");
-    const sessionId = payload.session_id;
-    if (!sessionId) return process.exit(0);
+      const transcript = findTranscript(sessionId, PROJECT_DIR);
+      if (!transcript) return process.exit(0);
 
-    const transcript = findTranscript(sessionId, PROJECT_DIR);
-    if (!transcript) return process.exit(0);
+      const cursor = loadCursor(sessionId);
+      const { events, newOffset, lastUuid } = processTranscript(transcript, PROJECT_DIR, cursor);
 
-    const cursor = loadCursor(sessionId);
-    const { events, newOffset, lastUuid } = processTranscript(transcript, PROJECT_DIR, cursor);
-
-    if (events.length > 0) {
-      appendEvents(events);
+      if (events.length > 0) {
+        appendEvents(events);
+      }
+      saveCursor(sessionId, { lastUuid, byteOffset: newOffset });
+    } catch {
+      // Never block.
     }
-    saveCursor(sessionId, { lastUuid, byteOffset: newOffset });
-  } catch {
-    // Never block.
-  }
-  process.exit(0);
-});
+    process.exit(0);
+  });
+}

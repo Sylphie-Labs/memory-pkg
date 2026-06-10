@@ -7,7 +7,7 @@
  *   intersection  weighted average, but filter to events surfaced by >= minAgreement tiers
  *
  * All strategies output `MergedCandidate` with `source_tiers` preserved for
- * attribution in the formatted output (e.g. "Match 1 — [embedding+classifier]").
+ * attribution in the formatted output (e.g. "Match 1 — [trigram+embedding]").
  *
  * Config is read from env at call-time by loadMergerConfig. Direct callers can
  * pass an explicit config to override for testing.
@@ -35,8 +35,6 @@ const DEFAULT_WEIGHTS: Record<string, number> = {
   trigram: 0.2,
   entity: 0.3,
   embedding: 0.3,
-  classifier: 0.4,
-  kg: 0.1,
 };
 
 export function loadMergerConfig(): MergerConfig {

@@ -1,8 +1,8 @@
 /**
  * subsystem.ts -- Derive a subsystem tag from an event's file_path.
  *
- * Subsystems are coarse buckets used for entity-based lookup by the classifier
- * tier. Derivation is deterministic and path-based so backfill and ingest
+ * Subsystems are coarse buckets used for entity-based lookup and filtering.
+ * Derivation is deterministic and path-based so backfill and ingest
  * agree. Events with no file_path get subsystem = null.
  *
  * The repo-root anchor is auto-detected once per process via

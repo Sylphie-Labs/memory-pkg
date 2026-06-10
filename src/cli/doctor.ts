@@ -18,7 +18,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { detectDrift, readState } from '../upgrade/state.js';
 import { compareVersions } from '../upgrade/runner.js';
-import { getModelFor } from '../config.js';
+import { getDatabaseConfig, getModelFor } from '../config.js';
 
 type CheckResult = { name: string; status: 'pass' | 'warn' | 'fail'; message: string };
 
@@ -136,35 +136,123 @@ async function checkHookSyntax(cwd: string): Promise<CheckResult> {
   return { name: 'hooks', status: 'fail', message: failures.join('; ') };
 }
 
+async function checkRationaleWiring(cwd: string): Promise<CheckResult> {
+  const candidates = [
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.local.json'),
+  ];
+
+  let anyFileExists = false;
+  const stopCommands: string[] = [];
+
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    anyFileExists = true;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+      const stopGroups = (parsed?.hooks as Record<string, unknown> | undefined)?.Stop;
+      if (!Array.isArray(stopGroups)) continue;
+      for (const group of stopGroups) {
+        const hookEntries = (group as Record<string, unknown>)?.hooks;
+        if (!Array.isArray(hookEntries)) continue;
+        for (const entry of hookEntries) {
+          const cmd = (entry as Record<string, unknown>)?.command;
+          if (typeof cmd === 'string') stopCommands.push(cmd);
+        }
+      }
+    } catch {
+      // unparseable file — skip silently
+    }
+  }
+
+  if (!anyFileExists) {
+    return {
+      name: 'rationale wiring',
+      status: 'warn',
+      message: `no .claude/settings.json found; merge the snippet from 'memory-pkg init'`,
+    };
+  }
+  if (stopCommands.length === 0) {
+    return {
+      name: 'rationale wiring',
+      status: 'warn',
+      message: `no Stop hook configured; capture/ingest/rationale won't run — re-merge the 'memory-pkg init' snippet`,
+    };
+  }
+  if (!stopCommands.some((cmd) => cmd.includes('rationale'))) {
+    return {
+      name: 'rationale wiring',
+      status: 'warn',
+      message: `Stop hook runs but does not invoke rationale — automatic 'why' synthesis is off. Re-merge the updated snippet from 'memory-pkg init' (chains rationale after ingest).`,
+    };
+  }
+  return {
+    name: 'rationale wiring',
+    status: 'pass',
+    message: `Stop hook chains rationale synthesis`,
+  };
+}
+
+async function checkInjectPath(_cwd: string): Promise<CheckResult> {
+  // Exercise the same retrieval pipeline the UserPromptSubmit hook runs, so
+  // a misconfigured port or unreachable DB surfaces here instead of only as
+  // "Claude never seems to have past context." We call the tiers directly
+  // (rather than generateInjection) so we can report per-tier outcomes —
+  // generateInjection swallows errors into the merged set and returns ''.
+  const { getFastPathTiers, getRescueTiers } = await import('../inject/tiers/index.js');
+  const { readRecentInjectErrors } = await import('../inject/error-log.js');
+  const tiers = [...getFastPathTiers(), ...getRescueTiers()];
+  if (tiers.length === 0) {
+    return { name: 'inject path', status: 'warn', message: 'no retrieval tiers enabled' };
+  }
+  const input = { query: 'memory-pkg doctor sample query', excludeSelf: false };
+  const errors: string[] = [];
+  const summary: string[] = [];
+  for (const tier of tiers) {
+    try {
+      const r = await tier(input);
+      if (r.error) errors.push(`${r.tier}: ${r.error.split('\n')[0]}`);
+      else if (r.disabled) summary.push(`${r.tier}(off)`);
+      else summary.push(`${r.tier}(${r.candidates.length})`);
+    } catch (err) {
+      errors.push(`tier crash: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`);
+    }
+  }
+  const recent = readRecentInjectErrors(3);
+  const tail = recent.length > 0 ? `   (${recent.length} recent silent failures in inject-errors.log)` : '';
+  if (errors.length > 0) {
+    return { name: 'inject path', status: 'fail', message: errors.join('; ') + tail };
+  }
+  return { name: 'inject path', status: 'pass', message: summary.join(', ') + tail };
+}
+
 async function checkClaudeSpawnModels(cwd: string): Promise<CheckResult> {
   const rationale = getModelFor('rationale', cwd);
-  const classify = getModelFor('classify', cwd);
   const rerank = getModelFor('rerank', cwd);
   return {
     name: 'claude -p models',
     status: 'pass',
-    message: `rationale=${rationale}  classify=${classify}  rerank=${rerank}`,
+    message: `rationale=${rationale}  rerank=${rerank}`,
   };
 }
 
-async function checkTimescale(): Promise<CheckResult> {
-  const host = process.env.MEMORY_PKG_PG_HOST ?? 'localhost';
-  const port = parseInt(process.env.MEMORY_PKG_PG_PORT ?? '5432', 10);
+async function checkTimescale(cwd: string): Promise<CheckResult> {
+  const db = getDatabaseConfig(cwd);
   try {
     const pg = (await import('pg')).default;
     const client = new pg.Client({
-      host,
-      port,
-      user: process.env.MEMORY_PKG_PG_USER ?? 'memory-pkg',
-      password: process.env.MEMORY_PKG_PG_PASSWORD ?? 'memory-pkg-local',
-      database: process.env.MEMORY_PKG_PG_DATABASE ?? 'memory',
+      host: db.host,
+      port: db.port,
+      user: db.user,
+      password: db.password,
+      database: db.database,
       connectionTimeoutMillis: 3000,
     });
     try {
       await client.connect();
       const r = await client.query('SELECT 1 AS ok');
       if (r.rows[0]?.ok === 1) {
-        return { name: 'timescale', status: 'pass', message: `reachable at ${host}:${port}` };
+        return { name: 'timescale', status: 'pass', message: `reachable at ${db.host}:${db.port}` };
       }
       return { name: 'timescale', status: 'warn', message: `connected but unexpected response` };
     } finally {
@@ -174,7 +262,7 @@ async function checkTimescale(): Promise<CheckResult> {
     return {
       name: 'timescale',
       status: 'fail',
-      message: `cannot reach ${host}:${port}: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`,
+      message: `cannot reach ${db.host}:${db.port}: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`,
     };
   }
 }
@@ -191,9 +279,13 @@ export async function runDoctor(args: string[]): Promise<number> {
     () => checkManagedFiles(cwd),
     () => checkMcpStanza(cwd),
     () => checkHookSyntax(cwd),
+    () => checkRationaleWiring(cwd),
     () => checkClaudeSpawnModels(cwd),
   ];
-  if (!noNetwork) checks.push(() => checkTimescale());
+  if (!noNetwork) {
+    checks.push(() => checkTimescale(cwd));
+    checks.push(() => checkInjectPath(cwd));
+  }
 
   let fails = 0, warns = 0;
   for (const run of checks) {
