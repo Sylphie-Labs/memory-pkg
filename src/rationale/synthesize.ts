@@ -119,7 +119,7 @@ async function findTurnsWithoutRationale(
   return turns;
 }
 
-function buildPrompt(turn: Turn): string {
+export function buildPrompt(turn: Turn): string {
   const userPrompt = turn.events.find((e) => e.event_type === 'user_prompt');
   const userText = userPrompt && (userPrompt.payload as { text?: string })?.text
     ? (userPrompt.payload as { text?: string }).text!

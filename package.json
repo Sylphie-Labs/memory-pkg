@@ -70,6 +70,8 @@
     "ingest": "node dist/ingest/ingester.js",
     "memory": "node dist/cli/memory-pkg.js",
     "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "release": "vitest run && npm publish"
   },

@@ -56,6 +56,64 @@ export interface GenerateInjectionOptions {
   transcriptPath?: string;
 }
 
+export interface RankedRow {
+  event_id: string;
+  ts: string;
+  session_id: string;
+  event_type: string;
+  tool_name: string | null;
+  summary: string | null;
+  excerpt: string | null;
+  file_path: string | null;
+  merged_score: number;
+  tier: string;
+}
+
+/**
+ * Pure formatter for the <memory-context> match section. Skips tool_result rows
+ * and rows with no usable excerpt, applies a total char budget (default
+ * MAX_TOTAL_CHARS) and an optional count limit (default unlimited). Returns
+ * { text: '', included: [] } if nothing fits; otherwise the full
+ * <memory-context>...</memory-context> wrapper plus the list of rows that were
+ * rendered (in the order they appear). The generic parameter T preserves any
+ * extra fields (e.g. _candidate) on the rows so callers can derive trace data
+ * from included without a separate lookup.
+ */
+export function formatInjectBlock<T extends RankedRow>(
+  ranked: T[],
+  opts?: { maxChars?: number; limit?: number },
+): { text: string; included: T[] } {
+  const maxChars = opts?.maxChars ?? MAX_TOTAL_CHARS;
+  const limit = opts?.limit ?? Infinity;
+
+  const blocks: string[] = [];
+  const included: T[] = [];
+  let totalChars = 0;
+
+  for (const r of ranked) {
+    if (included.length >= limit) break;
+    if (r.event_type === 'tool_result') continue;
+    const excerpt = (r.excerpt ?? r.summary ?? '').trim();
+    if (!excerpt) continue;
+
+    const score = Math.round(r.merged_score * 100);
+    const date = new Date(r.ts).toISOString().slice(0, 10);
+    const tool = r.tool_name ? ` · ${r.tool_name}` : '';
+    const file = r.file_path ? ` · ${r.file_path}` : '';
+    const heading = `### Match ${included.length + 1} — ${score}% · ${r.event_type}${tool}${file} · ${date} · [${r.tier}]`;
+    const quoted = `> ${excerpt.replace(/\n/g, '\n> ')}`;
+    const block = `${heading}\n${quoted}\n\n`;
+
+    if (totalChars + block.length > maxChars) break;
+    blocks.push(block);
+    totalChars += block.length;
+    included.push(r);
+  }
+
+  if (blocks.length === 0) return { text: '', included: [] };
+  return { text: `<memory-context>\n${blocks.join('')}</memory-context>`, included };
+}
+
 async function fetchEventsByIds(ids: string[]): Promise<Map<string, EventRow>> {
   if (ids.length === 0) return new Map();
   const sql = `
@@ -242,37 +300,43 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
     };
   }
 
-  let totalChars = 0;
-  let included = 0;
-  const finalPicks: FinalPick[] = [];
+  // Map the diversified picks into the RankedRow shape (plus _candidate for
+  // trace data) and let formatInjectBlock apply skip/budget/limit in one place.
+  const rankedRows: (RankedRow & { _candidate: MergedCandidate })[] = diversified.map((d) => ({
+    event_id: d.candidate.event_id,
+    ts: d.row.ts,
+    session_id: d.row.session_id,
+    event_type: d.row.event_type,
+    tool_name: d.row.tool_name,
+    summary: d.row.summary,
+    excerpt: d.row.excerpt,
+    file_path: d.row.file_path,
+    merged_score: d.candidate.score,
+    tier: d.candidate.source_tiers.join('+'),
+    _candidate: d.candidate,
+  }));
 
-  for (const { candidate: c, row: r } of diversified) {
-    if (included >= limit) break;
-    const date = new Date(r.ts).toISOString().slice(0, 10);
-    const score = Math.round(c.score * 100);
-    const tool = r.tool_name ? ` · ${r.tool_name}` : '';
-    const file = r.file_path ? ` · ${r.file_path}` : '';
-    const tierAnnotation = c.source_tiers.length > 0 ? ` · [${c.source_tiers.join('+')}]` : '';
-    const excerpt = (r.excerpt ?? r.summary ?? '').trim();
-    if (!excerpt) continue;
+  const { text: matchBlock, included: includedRows } = formatInjectBlock(rankedRows, {
+    maxChars: MAX_TOTAL_CHARS,
+    limit,
+  });
 
-    const block = [
-      `### Match ${included + 1} — ${score}% · ${r.event_type}${tool}${file} · ${date}${tierAnnotation}`,
-      `> ${excerpt.replace(/\n/g, '\n> ')}`,
-      '',
-    ].join('\n');
+  // Derive finalPicks from the rows formatInjectBlock actually rendered so the
+  // trace log never drifts from what the model received.
+  const finalPicks: FinalPick[] = includedRows.map((rr) => {
+    const d = diversified.find((item) => item.candidate.event_id === rr.event_id);
+    return {
+      event_id: rr.event_id,
+      score: rr._candidate.score,
+      source_tiers: rr._candidate.source_tiers,
+      event_type: rr.event_type,
+      relevance: (d?.relevance ?? 1) as 0 | 1 | 2,
+    };
+  });
 
-    if (totalChars + block.length > MAX_TOTAL_CHARS) break;
-    lines.push(block);
-    totalChars += block.length;
-    included++;
-    finalPicks.push({
-      event_id: c.event_id,
-      score: c.score,
-      source_tiers: c.source_tiers,
-      event_type: r.event_type,
-      relevance: (diversified.find((d) => d.candidate.event_id === c.event_id)?.relevance ?? 1) as 0 | 1 | 2,
-    });
+  if (matchBlock) {
+    // Embed the rendered matches (sans wrapper tags) inside the context block.
+    lines.push(matchBlock.replace(/^<memory-context>\n/, '').replace(/<\/memory-context>$/, '').trimEnd());
   }
 
   lines.push('</memory-context>');

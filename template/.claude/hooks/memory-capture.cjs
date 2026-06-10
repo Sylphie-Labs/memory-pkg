@@ -333,6 +333,7 @@ function processTranscript(transcriptPath, projectPath, cursor) {
 module.exports = {
   parseTranscriptLine,
   processTranscript,
+  appendEvents,
   buildSearchText,
   buildExcerpt,
   summarizeToolCall,

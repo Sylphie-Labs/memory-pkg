@@ -28,7 +28,35 @@ type Pipe = (text: string | string[], opts: Record<string, unknown>) => Promise<
 
 let _pipe: Promise<Pipe> | null = null;
 
+/**
+ * Deterministic, hash-based fake embedding for tests. Splits on whitespace,
+ * maps each word to a bucket in [0, EMBED_DIM) via its summed char codes, sets
+ * that bucket to 1/(words.length+1), then L2-normalizes. No model load.
+ */
+function fakeEmbedText(text: string): number[] {
+  const vec = new Array<number>(EMBED_DIM).fill(0);
+  const words = text.split(/\s+/).filter((w) => w.length > 0);
+  for (const word of words) {
+    const bucket = word.split('').reduce((s, c) => s + c.charCodeAt(0), 0) % EMBED_DIM;
+    vec[bucket] = 1 / (words.length + 1);
+  }
+  const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));
+  if (norm > 0) {
+    for (let i = 0; i < vec.length; i++) vec[i] /= norm;
+  }
+  return vec;
+}
+
 async function getPipeline(): Promise<Pipe> {
+  if (process.env.MEMORY_PKG_EMBED_FAKE) {
+    // Return a fake pipe that uses fakeEmbedText — no ONNX model load.
+    return async (text, _opts) => {
+      const texts = Array.isArray(text) ? text : [text];
+      const vecs = texts.map(fakeEmbedText);
+      const flat = new Float32Array(vecs.flat());
+      return { data: flat, dims: [texts.length, EMBED_DIM] };
+    };
+  }
   if (_pipe === null) {
     _pipe = import('@huggingface/transformers').then(async (mod) => {
       const pipe = await mod.pipeline('feature-extraction', MODEL);

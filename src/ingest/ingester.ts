@@ -16,9 +16,6 @@ import { embedMany, toVectorLiteral } from '../embed.js';
 
 const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 const BUFFER_DIR = path.join(PROJECT_DIR, '.claude', 'memory');
-const BUFFER_FILE = path.join(BUFFER_DIR, 'buffer.jsonl');
-const PROCESSING_FILE = path.join(BUFFER_DIR, 'buffer.processing.jsonl');
-const FAILED_FILE = path.join(BUFFER_DIR, 'buffer.failed.jsonl');
 
 export interface BufferEvent {
   ts: string;
@@ -35,7 +32,6 @@ export interface BufferEvent {
   transcript_uuid?: string;
 }
 
-const LOCK_FILE = path.join(BUFFER_DIR, 'ingest.lock');
 const LOCK_STALE_MS = 10 * 60 * 1000; // a Stop-hook ingest should never take 10 min
 
 /**
@@ -44,20 +40,21 @@ const LOCK_STALE_MS = 10 * 60 * 1000; // a Stop-hook ingest should never take 10
  * is the atomic check-and-claim; a lock older than LOCK_STALE_MS is treated
  * as a crashed run and broken.
  */
-function acquireLock(): boolean {
-  if (!fs.existsSync(BUFFER_DIR)) fs.mkdirSync(BUFFER_DIR, { recursive: true });
+export function acquireLock(bufDir: string): boolean {
+  const lockFile = path.join(bufDir, 'ingest.lock');
+  if (!fs.existsSync(bufDir)) fs.mkdirSync(bufDir, { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const fd = fs.openSync(LOCK_FILE, 'wx');
+      const fd = fs.openSync(lockFile, 'wx');
       fs.writeSync(fd, JSON.stringify({ pid: process.pid, ts: new Date().toISOString() }));
       fs.closeSync(fd);
       return true;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
       try {
-        const ageMs = Date.now() - fs.statSync(LOCK_FILE).mtimeMs;
+        const ageMs = Date.now() - fs.statSync(lockFile).mtimeMs;
         if (ageMs <= LOCK_STALE_MS) return false; // live lock — back off
-        fs.unlinkSync(LOCK_FILE); // stale — break it and retry the create
+        fs.unlinkSync(lockFile); // stale — break it and retry the create
       } catch {
         // Lock vanished between open and stat/unlink — loop and retry create.
       }
@@ -66,40 +63,42 @@ function acquireLock(): boolean {
   return false;
 }
 
-function releaseLock(): void {
+export function releaseLock(bufDir: string): void {
   try {
-    fs.unlinkSync(LOCK_FILE);
+    fs.unlinkSync(path.join(bufDir, 'ingest.lock'));
   } catch {
     // already gone — fine
   }
 }
 
-function rotateBuffer(): string | null {
-  const tmp = `${BUFFER_FILE}.rotating`;
+export function rotateBuffer(bufDir: string): string | null {
+  const bufferFile = path.join(bufDir, 'buffer.jsonl');
+  const processingFile = path.join(bufDir, 'buffer.processing.jsonl');
+  const tmp = `${bufferFile}.rotating`;
 
   // Recover a temp file orphaned by a crash mid-merge.
   if (fs.existsSync(tmp)) {
-    fs.appendFileSync(PROCESSING_FILE, fs.readFileSync(tmp, 'utf8'));
+    fs.appendFileSync(processingFile, fs.readFileSync(tmp, 'utf8'));
     fs.unlinkSync(tmp);
   }
 
-  const hasBuffer = fs.existsSync(BUFFER_FILE);
-  const hasProcessing = fs.existsSync(PROCESSING_FILE);
+  const hasBuffer = fs.existsSync(bufferFile);
+  const hasProcessing = fs.existsSync(processingFile);
 
-  if (!hasBuffer) return hasProcessing ? PROCESSING_FILE : null;
+  if (!hasBuffer) return hasProcessing ? processingFile : null;
 
   if (hasProcessing) {
-    // rename() atomically detaches BUFFER_FILE from its path; hook appends
+    // rename() atomically detaches bufferFile from its path; hook appends
     // after this instant create a fresh buffer file, so no line can be lost
     // (the old read-then-unlink scheme dropped appends that raced the read).
-    fs.renameSync(BUFFER_FILE, tmp);
-    fs.appendFileSync(PROCESSING_FILE, fs.readFileSync(tmp, 'utf8'));
+    fs.renameSync(bufferFile, tmp);
+    fs.appendFileSync(processingFile, fs.readFileSync(tmp, 'utf8'));
     fs.unlinkSync(tmp);
-    return PROCESSING_FILE;
+    return processingFile;
   }
 
-  fs.renameSync(BUFFER_FILE, PROCESSING_FILE);
-  return PROCESSING_FILE;
+  fs.renameSync(bufferFile, processingFile);
+  return processingFile;
 }
 
 function parseLines(content: string): BufferEvent[] {
@@ -156,7 +155,11 @@ const COLS = 14;
 // Postgres caps bind parameters at 65535 per statement. Stay well under it.
 const MAX_EVENTS_PER_STATEMENT = Math.floor(60000 / COLS); // 4285
 
-async function insertBatch(events: BufferEvent[]): Promise<number> {
+/**
+ * Real DB insert. Swappable via setInsertBatchFn so the filesystem-level
+ * rotate/lock/ingest flow can be unit-tested without a live TimescaleDB.
+ */
+async function insertBatchReal(events: BufferEvent[]): Promise<number> {
   if (events.length === 0) return 0;
   const embeddings = await computeEmbeddings(events);
   const pool = getPool();
@@ -214,31 +217,54 @@ async function insertBatch(events: BufferEvent[]): Promise<number> {
   }
 }
 
+// Indirection so the ingest() filesystem flow (rotate, lock, success-delete,
+// failure-dead-letter) can be exercised in unit tests with a stub insert that
+// never touches Postgres. Production always uses insertBatchReal.
+let insertBatch: (events: BufferEvent[]) => Promise<number> = insertBatchReal;
+
+/** Test hook: override the DB insert. Returns a restore fn. */
+export function setInsertBatchFn(
+  fn: (events: BufferEvent[]) => Promise<number>,
+): () => void {
+  const prev = insertBatch;
+  insertBatch = fn;
+  return () => {
+    insertBatch = prev;
+  };
+}
+
 export interface IngestOptions {
   /** Re-queue the dead-letter file (buffer.failed.jsonl) before ingesting. */
   retryFailed?: boolean;
+  /** Override the buffer directory (defaults to CLAUDE_PROJECT_DIR/.claude/memory). */
+  bufferDir?: string;
 }
 
 export async function ingest(
   opts: IngestOptions = {},
 ): Promise<{ inserted: number; skipped?: 'locked' }> {
-  if (!acquireLock()) {
-    process.stderr.write(`[ingester] another ingest holds ${LOCK_FILE}; skipping this run\n`);
+  const bufDir = opts.bufferDir ?? BUFFER_DIR;
+  const bufFile = path.join(bufDir, 'buffer.jsonl');
+  const failedFile = path.join(bufDir, 'buffer.failed.jsonl');
+  const lockFile = path.join(bufDir, 'ingest.lock');
+
+  if (!acquireLock(bufDir)) {
+    process.stderr.write(`[ingester] another ingest holds ${lockFile}; skipping this run\n`);
     return { inserted: 0, skipped: 'locked' };
   }
 
   try {
-    if (opts.retryFailed && fs.existsSync(FAILED_FILE)) {
+    if (opts.retryFailed && fs.existsSync(failedFile)) {
       // Re-queue dead-lettered events through the normal pipeline. Rename
       // first so a crash mid-requeue can't duplicate them.
-      const tmp = `${FAILED_FILE}.retrying`;
-      fs.renameSync(FAILED_FILE, tmp);
-      fs.appendFileSync(BUFFER_FILE, fs.readFileSync(tmp, 'utf8'));
+      const tmp = `${failedFile}.retrying`;
+      fs.renameSync(failedFile, tmp);
+      fs.appendFileSync(bufFile, fs.readFileSync(tmp, 'utf8'));
       fs.unlinkSync(tmp);
       process.stdout.write(`[ingester] re-queued dead-letter batch from buffer.failed.jsonl\n`);
     }
 
-    const file = rotateBuffer();
+    const file = rotateBuffer(bufDir);
     if (!file) return { inserted: 0 };
 
     const content = fs.readFileSync(file, 'utf8');
@@ -255,16 +281,16 @@ export async function ingest(
       return { inserted: n };
     } catch (err) {
       // Preserve the unprocessed batch for inspection / `ingest --retry-failed`.
-      if (fs.existsSync(FAILED_FILE)) {
-        fs.appendFileSync(FAILED_FILE, content);
+      if (fs.existsSync(failedFile)) {
+        fs.appendFileSync(failedFile, content);
         fs.unlinkSync(file);
       } else {
-        fs.renameSync(file, FAILED_FILE);
+        fs.renameSync(file, failedFile);
       }
       throw err;
     }
   } finally {
-    releaseLock();
+    releaseLock(bufDir);
   }
 }
 
