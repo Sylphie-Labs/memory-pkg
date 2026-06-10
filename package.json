@@ -64,13 +64,14 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "prepublishOnly": "pnpm run clean && pnpm run build",
+    "prepublishOnly": "rimraf dist && tsc",
     "mcp-server": "node dist/mcp-server/index.js",
     "schema:init": "node dist/schema.js",
     "ingest": "node dist/ingest/ingester.js",
     "memory": "node dist/cli/memory-pkg.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "release": "vitest run && npm publish"
   },
   "dependencies": {
     "@huggingface/transformers": "^3",
