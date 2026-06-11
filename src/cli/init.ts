@@ -129,7 +129,7 @@ function copyFile(src: string, dest: string, flags: Flags): WriteResult {
  * baked in. The hook still honors MEMORY_PKG_CLI_PATH and local-node_modules
  * resolution; the baked path is the final fallback.
  */
-function renderInjectHook(bakedCliPath: string): string {
+export function renderInjectHook(bakedCliPath: string): string {
   const templatePath = path.join(getPackageRoot(), 'template', '.claude', 'hooks', 'memory-inject.cjs');
   const raw = fs.readFileSync(templatePath, 'utf8');
 
@@ -322,7 +322,7 @@ function desiredSettingsHooks(): Array<{ event: 'UserPromptSubmit' | 'Stop'; mar
  * If the file exists but is not valid JSON, we refuse to touch it and fall
  * back to printing the snippet for hand-merging.
  */
-function installSettings(cwd: string, flags: Flags): void {
+export function installSettings(cwd: string, flags: Pick<Flags, 'force' | 'dryRun'>): void {
   const rel = normalizePath(path.join('.claude', 'settings.json'));
   const abs = path.join(cwd, rel);
 
