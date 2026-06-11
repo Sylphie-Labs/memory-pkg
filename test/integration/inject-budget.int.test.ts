@@ -24,11 +24,13 @@ import { closePool } from '../../src/timescale-client.js';
 import { generateInjection } from '../../src/inject/generate.js';
 
 const MATCH_QUERY = 'budget test keyword unique';
-const NOMATCH_QUERY = 'absolutely_no_match_9z9z9z';
+// Intentionally uses character sequences that share NO trigrams with any seeded
+// search_text. Avoid strings like 'no_match' that overlap with SMALL_MATCH_SEARCH.
+const NOMATCH_QUERY = 'qfjvwbplkxhzsyrde';
 
 // A row whose search_text equals this string surfaces only when the query is
 // this string — proves matching still works for a non-budget query.
-const SMALL_MATCH_SEARCH = 'zzqx_nomatch_xqzz';
+const SMALL_MATCH_SEARCH = 'xvqzjwbfhylptkcgr';
 const SMALL_MATCH_EXCERPT = 'small match';
 
 const TOOL_RESULT_EXCERPT = 'tool_result_excerpt_should_never_be_injected';
