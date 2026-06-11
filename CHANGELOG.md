@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-11
+
+### Fixed
+- **Retrieval quality: backfill embeddings.** All pre-existing events (captured before 0.3.0's embedding-at-ingest feature) had NULL vector columns, leaving the semantic rescue tier completely blind. Run `memory-pkg backfill-embeddings` after upgrading if you have a corpus predating 0.3.0.
+- **0.3.0→0.4.0 upgrade migration** (was missing from the 0.4.0 release). Refreshes both hooks, auto-merges settings.json hook entries, removes `.mcp.json` from managed-file tracking, and stamps `schema_version=1`.
+- **`inject` flag parsing** drop — first positional arg was silently dropped when passed after a flag; fixed in `memory-pkg.ts`.
+
+### Added
+- **Retrieval quality benchmark** (`test/integration/retrieval-quality.int.test.ts`). Seeds controlled corpora with trigram, entity, and budget cases; asserts Recall@K and MRR so regressions are detectable. Baseline: MRR=1.0, Recall=1.0 across all scored cases.
+- **Test helpers**: `retrieval-score.ts` (scoreCase/scoreSuite using the rationale trace), `corpus-seeder.ts` (seedEvents + fakeEmbed vectors), `vitest.integration.config.ts` (separate DB-backed project).
+- **Explicit transcript line tagging** (`userLine`/`assistantLine`) in test helpers — eliminates role-inference mis-fires for solo assistant-text turns.
+
 ## [0.4.0] — 2026-06-10
 
 ### Added
