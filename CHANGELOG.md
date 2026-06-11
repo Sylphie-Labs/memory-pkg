@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-06-11
+
+### Fixed
+- **Upgrade path from 0.4.0 → 0.4.1 was blocked.** The migration runner requires a registered migration for every version hop. 0.4.1 was a test-only patch release and shipped no migration, so `memory-pkg upgrade` returned "No migration from 0.4.0 to 0.4.1" and suggested `init --force` as a workaround. Added a no-op 0.4.0 → 0.4.1 migration that advances the version cursor with no file or schema changes.
+
 ## [0.4.1] — 2026-06-11
 
 ### Fixed
