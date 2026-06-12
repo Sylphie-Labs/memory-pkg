@@ -170,6 +170,21 @@ function installHooks(cwd: string, flags: Flags, managed: ManagedFile[]): void {
     managed.push({ path: captureRel, installedHash: hashString(fs.readFileSync(captureSrc)) });
   }
 
+  // memory-rate.cjs: straight copy (zero-dep Stop hook, asks Claude to rate
+  // the memories it was injected this turn).
+  const rateSrc = path.join(templateRoot, 'memory-rate.cjs');
+  if (fs.existsSync(rateSrc)) {
+    const rateRel = normalizePath(path.join('.claude', 'hooks', 'memory-rate.cjs'));
+    const rateDest = path.join(cwd, rateRel);
+    const rateResult = copyFile(rateSrc, rateDest, flags);
+    process.stdout.write(`  ${rateResult.padEnd(12)} ${rateRel}\n`);
+    if (rateResult === 'wrote') {
+      managed.push({ path: rateRel, installedHash: hashFile(rateDest) });
+    } else if (rateResult === 'skipped' && fs.existsSync(rateDest)) {
+      managed.push({ path: rateRel, installedHash: hashString(fs.readFileSync(rateSrc)) });
+    }
+  }
+
   // memory-inject.cjs: render with baked CLI path.
   const injectRel = normalizePath(path.join('.claude', 'hooks', 'memory-inject.cjs'));
   const injectDest = path.join(cwd, injectRel);
@@ -313,6 +328,17 @@ function desiredSettingsHooks(): DesiredHook[] {
       entry: {
         type: 'command',
         command: 'node .claude/hooks/memory-capture.cjs',
+        timeout: 10,
+      },
+    },
+    {
+      // Synchronous (NOT async): it may return {decision:"block"} to ask Claude
+      // to rate the memories it was injected this turn.
+      event: 'Stop',
+      marker: 'memory-rate.cjs',
+      entry: {
+        type: 'command',
+        command: 'node .claude/hooks/memory-rate.cjs',
         timeout: 10,
       },
     },

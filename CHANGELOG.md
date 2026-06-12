@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-06-12
+
+Phase 4 of the ambient-memory arc: the self-rating feedback loop (schema v3) — the smallest slice that closes inject → persist → rate → fold → score, on the existing prompt path, measurement-only.
+
+### Added
+- **Injection persistence.** Each real injection now writes a `memory_injections` row (what was injected, with shadow scores) and a sidecar ledger line at `.claude/memory/injections/<session>.jsonl`, and prints an `injection: <id>` line inside the `<memory-context>` block so Claude can reference it when rating. Both writes are best-effort — a DB or FS failure never breaks injection. Gated behind a `persistInjection` flag (the CLI/hook path sets it; dry-runs and tests don't persist).
+- **`rateMemoryInjections` MCP tool.** Claude rates the memories it was injected (`+1` used / `0` neutral / `-1` misleading), keyed by the printed injection id. Append-only into `memory_ratings`, coerced to {−1,0,+1}, idempotent on `(injection_id, item_id, source)`; an unknown injection id is accepted (no FK, fail-open).
+- **`memory-rate.cjs` Stop hook.** Zero-dependency, synchronous, never touches the DB. Reads the injection ledger and, for un-rated injections this turn, returns `{decision:"block"}` re-quoting their summaries and asking Claude to call `rateMemoryInjections`. Honors `stop_hook_active` (no loops), samples prompt-path injections (`MEMORY_PKG_RATE_SAMPLE`, default 0.25; ambient always), caps at 8 requests/session, and is a silent no-op on the common no-injection turn. Off switches: `MEMORY_PKG_RATING_DISABLED=1`, `MEMORY_PKG_RATE_SAMPLE=0`.
+- **Usefulness math** (`src/feedback/usefulness.ts`, pure, exhaustively unit-tested): `u = ((sum_self + 0.5·sum_implicit)/(n_self + 0.5·n_implicit) − mu)·e^(−Δt/τ)`, τ=45d, `m = clamp(1 + 0.3·u, 0.7, 1.3)`. Decays toward neutral; the 0.7 floor is the death-spiral guard.
+- **`stats-fold`** (consolidation, both cadences) recomputes `memory_event_stats` from `memory_ratings` — recompute, not increment, so it's idempotent and race-free; tick scopes to items rated in the last 7 days, deep recomputes all. **`ledger-prune`** (deep) removes ledger sidecars > 7 days old.
+- **Shadow multipliers.** Each injected item's usefulness multiplier is computed and stored in `memory_injections.shadow_scores` but **not applied to ranking yet** — Phase 4 is pure measurement, so the signal can be observed before it influences retrieval (Phase 6 flips it live behind a gate).
+
+### Migration
+- `0.6.0 → 0.7.0` installs `memory-rate.cjs` (drift-safe), merges its synchronous Stop entry, and creates the v3 feedback tables (frozen DDL; degrades to a warning if the DB is unreachable). Stamps `schema_version=3`.
+
 ## [0.6.0] — 2026-06-12
 
 Phase 3 of the ambient-memory arc: the entity graph (schema v2) — the structural B1 fix and the surface mid-turn ambient injection will stand on.

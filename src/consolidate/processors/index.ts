@@ -14,12 +14,15 @@ import { embeddingBackfillProcessor } from './embedding-backfill.js';
 import { rationaleProcessor } from './rationale.js';
 import { rationaleBacklogProcessor } from './rationale-backlog.js';
 import { entityLinkProcessor } from './entity-link.js';
+import { statsFoldProcessor } from './stats-fold.js';
+import { ledgerPruneProcessor } from './ledger-prune.js';
 
 // Order matters. orphan-sweep (deep) runs before ingest-flush so back-captured
 // deltas are flushed in the same deep pass; rationale processors run after the
-// flush so they see freshly-landed turns; entity-link runs last so it also
-// links the rationale events just created. Cadence filtering in the runner
-// decides which actually execute on a given tick vs deep run.
+// flush so they see freshly-landed turns; entity-link runs after that so it
+// also links the rationale events just created. stats-fold and ledger-prune
+// (feedback) close out the run. Cadence filtering in the runner decides which
+// actually execute on a given tick vs deep run.
 export const PROCESSORS: Processor[] = [
   orphanSweepProcessor, // deep
   ingestFlushProcessor, // both
@@ -27,4 +30,6 @@ export const PROCESSORS: Processor[] = [
   rationaleProcessor, // tick
   rationaleBacklogProcessor, // deep
   entityLinkProcessor, // both
+  statsFoldProcessor, // both
+  ledgerPruneProcessor, // deep
 ];

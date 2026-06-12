@@ -16,7 +16,7 @@ import { runQuery, closePool } from './timescale-client.js';
  * hypertable, subsystem, embedding, transcript_uuid unique index, memory_meta
  * itself).
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const STATEMENTS: Array<{ label: string; sql: string }> = [
   {
@@ -164,6 +164,71 @@ const STATEMENTS: Array<{ label: string; sql: string }> = [
     sql: `CREATE INDEX IF NOT EXISTS idx_memory_rationale_source
             ON memory_events ((payload->>'source_user_prompt_id'))
             WHERE event_type = 'turn_rationale';`,
+  },
+
+  // --- Schema v3 (0.7.0): the feedback loop -----------------------------------
+  // memory_injections records what was injected (so a rating can target the
+  // right event rows). memory_ratings is append-only truth. memory_event_stats
+  // is the derived aggregate consolidation maintains. None are hypertables and
+  // none touch memory_events (which stays append-only).
+  {
+    label: 'table: memory_injections',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_injections (
+        injection_id    UUID PRIMARY KEY,
+        ts              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        session_id      TEXT,
+        trigger         TEXT NOT NULL,
+        query_or_entity TEXT,
+        item_ids        UUID[] NOT NULL,
+        item_kinds      TEXT[] NOT NULL,
+        chars_injected  INTEGER NOT NULL DEFAULT 0,
+        shadow_scores   JSONB
+      );
+    `,
+  },
+  {
+    label: 'index: injections session+ts',
+    sql: `CREATE INDEX IF NOT EXISTS idx_injections_session_ts ON memory_injections (session_id, ts DESC);`,
+  },
+  {
+    label: 'table: memory_ratings (append-only)',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_ratings (
+        rating_id    BIGSERIAL PRIMARY KEY,
+        ts           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        injection_id UUID NOT NULL,
+        item_id      UUID NOT NULL,
+        item_kind    TEXT NOT NULL DEFAULT 'event',
+        rating       SMALLINT NOT NULL CHECK (rating IN (-1, 0, 1)),
+        source       TEXT NOT NULL DEFAULT 'self',
+        referenced   BOOLEAN,
+        session_id   TEXT
+      );
+    `,
+  },
+  {
+    label: 'unique: ratings dedupe (injection_id, item_id, source)',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_ratings_dedupe ON memory_ratings (injection_id, item_id, source);`,
+  },
+  {
+    label: 'index: ratings item',
+    sql: `CREATE INDEX IF NOT EXISTS idx_ratings_item ON memory_ratings (item_id, ts DESC);`,
+  },
+  {
+    label: 'table: memory_event_stats (derived aggregate)',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_event_stats (
+        item_id       UUID PRIMARY KEY,
+        item_kind     TEXT NOT NULL DEFAULT 'event',
+        n_self        INTEGER NOT NULL DEFAULT 0,
+        sum_self      INTEGER NOT NULL DEFAULT 0,
+        n_implicit    INTEGER NOT NULL DEFAULT 0,
+        sum_implicit  INTEGER NOT NULL DEFAULT 0,
+        last_rated_at TIMESTAMPTZ,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `,
   },
 ];
 

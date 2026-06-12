@@ -19,6 +19,9 @@ import { mergeCandidates, applyDiversity, loadMergerConfig, type MergedCandidate
 import { appendTrace, type TierTrace, type FinalPick } from './rationale-log.js';
 import { appendInjectError } from './error-log.js';
 import type { TierResult } from './tiers/types.js';
+import { recordInjection } from '../feedback/record-injection.js';
+import { statsMultiplier, type EventStats } from '../feedback/usefulness.js';
+import { getMeta } from '../consolidate/meta.js';
 
 // When fast-path (trigram + entity) candidates have at least one score at/above
 // this threshold, the rescue phase (the semantic embedding tier) is skipped.
@@ -54,6 +57,10 @@ export interface GenerateInjectionOptions {
   // Absolute path to current session's JSONL transcript. Passed down to the
   // entity tier which tails the last N lines for entity extraction.
   transcriptPath?: string;
+  // When true (the real hook path, set by the CLI), persist a memory_injections
+  // row + ledger sidecar and print the injection id in the block so the model
+  // can rate it at Stop. Default false so dry-run/CLI/tests don't persist.
+  persistInjection?: boolean;
 }
 
 export interface RankedRow {
@@ -123,6 +130,22 @@ async function fetchEventsByIds(ids: string[]): Promise<Map<string, EventRow>> {
   `;
   const rows = await runQuery<EventRow>(sql, [ids]);
   return new Map(rows.map((r) => [r.event_id, r]));
+}
+
+/** Per-item usefulness stats for the shadow multiplier. Empty on any error
+ * (pre-v3 schema / DB down) so injection never depends on the feedback tables. */
+async function fetchStats(ids: string[]): Promise<Map<string, EventStats>> {
+  if (ids.length === 0) return new Map();
+  try {
+    const rows = await runQuery<EventStats & { item_id: string }>(
+      `SELECT item_id, n_self, sum_self, n_implicit, sum_implicit, last_rated_at
+       FROM memory_event_stats WHERE item_id = ANY($1::uuid[])`,
+      [ids],
+    );
+    return new Map(rows.map((r) => [r.item_id, r]));
+  } catch {
+    return new Map();
+  }
 }
 
 export async function generateInjection(opts: GenerateInjectionOptions): Promise<string> {
@@ -333,6 +356,44 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
       relevance: (d?.relevance ?? 1) as 0 | 1 | 2,
     };
   });
+
+  // Persist the injection (real hook path only) and print its id so the model
+  // can rate these memories at Stop. Shadow multipliers are computed and stored
+  // but NOT applied to ranking yet (Phase 4 is measurement-only).
+  if (opts.persistInjection && includedRows.length > 0) {
+    try {
+      const ids = includedRows.map((r) => r.event_id);
+      const [stats, muRaw] = await Promise.all([fetchStats(ids), getMeta('rating_mean')]);
+      const mu = muRaw ? parseFloat(muRaw) || 0 : 0;
+      const now = Date.now();
+      const shadowScores: Record<string, { merged: number; multiplier: number; effective: number }> = {};
+      for (const rr of includedRows) {
+        const s = stats.get(rr.event_id) ?? { n_self: 0, sum_self: 0, n_implicit: 0, sum_implicit: 0, last_rated_at: null };
+        const m = statsMultiplier(s, now, mu);
+        shadowScores[rr.event_id] = {
+          merged: rr.merged_score,
+          multiplier: m,
+          effective: rr.merged_score * m,
+        };
+      }
+      const injectionId = await recordInjection({
+        sessionId: opts.currentSessionId ?? null,
+        trigger: 'prompt',
+        queryOrEntity: query,
+        items: includedRows.map((rr) => ({
+          item_id: rr.event_id,
+          item_kind: 'event' as const,
+          summary120: (rr.excerpt ?? rr.summary ?? '').trim().slice(0, 120),
+        })),
+        charsInjected: matchBlock.length,
+        shadowScores,
+      });
+      // Insert right after the intro line so the model sees it.
+      lines.splice(2, 0, `injection: ${injectionId}`);
+    } catch {
+      // Persistence must never break injection.
+    }
+  }
 
   if (matchBlock) {
     // Embed the rendered matches (sans wrapper tags) inside the context block.

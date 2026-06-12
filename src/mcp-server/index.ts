@@ -26,6 +26,7 @@ import { handleSearchMemory, SearchMemoryInput } from './tools/searchMemory.js';
 import { handleGetMemoryContext, GetMemoryContextInput } from './tools/getMemoryContext.js';
 import { handleUnwindFromEvent, UnwindFromEventInput } from './tools/unwindFromEvent.js';
 import { handleGetSessionTimeline, GetSessionTimelineInput } from './tools/getSessionTimeline.js';
+import { handleRateMemoryInjections, RateMemoryInjectionsInput } from './tools/rateMemoryInjections.js';
 
 const TOOLS: Tool[] = [
   {
@@ -90,6 +91,35 @@ const TOOLS: Tool[] = [
       required: ['sessionId'],
     },
   },
+  {
+    name: 'rateMemoryInjections',
+    description:
+      'Rate the memories you were injected this turn so future recall improves. ' +
+      'Call this when a Stop hook asks you to rate; pass the injection_id printed on the ' +
+      '"injection: <id>" line inside the <memory-context> block, and a rating per event_id: ' +
+      '+1 = used/helpful, 0 = saw it, neutral/unused, -1 = misleading or wrong. ' +
+      'Be honest and discriminating — rating everything +1 teaches the system nothing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        injection_id: { type: 'string', description: 'The injection UUID from the "injection: <id>" line in the memory-context block.' },
+        ratings: {
+          type: 'array',
+          description: 'One entry per injected memory you are rating.',
+          items: {
+            type: 'object',
+            properties: {
+              event_id: { type: 'string', description: 'The memory event_id being rated.' },
+              rating: { type: 'number', description: '+1 used/helpful, 0 neutral/unused, -1 misleading/wrong.' },
+            },
+            required: ['event_id', 'rating'],
+          },
+        },
+        session_id: { type: 'string', description: 'Optional: the current session id.' },
+      },
+      required: ['injection_id', 'ratings'],
+    },
+  },
 ];
 
 const server = new Server(
@@ -119,6 +149,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         break;
       case 'getSessionTimeline':
         result = await handleGetSessionTimeline(args as unknown as GetSessionTimelineInput);
+        break;
+      case 'rateMemoryInjections':
+        result = await handleRateMemoryInjections(args as unknown as RateMemoryInjectionsInput);
         break;
       default:
         result = `Unknown tool: ${name}. Available: ${TOOLS.map((t) => t.name).join(', ')}`;

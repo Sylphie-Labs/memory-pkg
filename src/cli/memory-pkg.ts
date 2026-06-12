@@ -313,6 +313,9 @@ async function main(): Promise<void> {
           currentSessionId: injectFlags.session,
           limit: injectFlags.limit ? parseInt(injectFlags.limit, 10) : undefined,
           transcriptPath: injectFlags.transcript,
+          // The CLI inject command IS the hook path — persist the injection so
+          // it can be rated at Stop. (--no-persist opts out for manual testing.)
+          persistInjection: injectFlags['no-persist'] !== 'true',
         });
         if (block) process.stdout.write(block + '\n');
         break;
