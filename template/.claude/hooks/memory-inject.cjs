@@ -62,6 +62,19 @@ process.stdin.on("end", () => {
     const sessionId = payload?.session_id;
     const transcriptPath = payload?.transcript_path;
 
+    // Mark the turn boundary for the ambient hook's per-turn injection cap:
+    // append a {t:"reset"} line to the ambient ledger (best effort). This is the
+    // only place that knows a new turn has started (PostToolUse can't tell).
+    if (sessionId) {
+      try {
+        const ambientDir = path.join(PROJECT_DIR, ".claude", "memory", "ambient");
+        fs.mkdirSync(ambientDir, { recursive: true });
+        fs.appendFileSync(path.join(ambientDir, `${sessionId}.jsonl`), JSON.stringify({ t: "reset" }) + "\n", "utf8");
+      } catch {
+        // best effort
+      }
+    }
+
     if (!prompt || prompt.length < 6) return process.exit(0);
     if (!CLI_PATH) return process.exit(0); // memory-pkg not installed / not resolvable
 

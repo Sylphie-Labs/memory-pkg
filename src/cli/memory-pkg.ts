@@ -246,6 +246,14 @@ async function main(): Promise<void> {
         break;
       }
 
+      case 'ambient': {
+        // Mid-turn ambient recall for the PostToolUse hook. Reads
+        // {session_id, entities[]} from stdin; prints JSON {text, injected}.
+        const { runAmbient } = await import('./ambient.js');
+        await runAmbient();
+        break;
+      }
+
       case 'entity': {
         if (!arg) throw new Error('entity name required');
         const { runQuery } = await import('../timescale-client.js');

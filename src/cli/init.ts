@@ -185,6 +185,21 @@ function installHooks(cwd: string, flags: Flags, managed: ManagedFile[]): void {
     }
   }
 
+  // memory-ambient.cjs: straight copy (zero-dep PostToolUse hook for mid-turn
+  // ambient recall).
+  const ambientSrc = path.join(templateRoot, 'memory-ambient.cjs');
+  if (fs.existsSync(ambientSrc)) {
+    const ambientRel = normalizePath(path.join('.claude', 'hooks', 'memory-ambient.cjs'));
+    const ambientDest = path.join(cwd, ambientRel);
+    const ambientResult = copyFile(ambientSrc, ambientDest, flags);
+    process.stdout.write(`  ${ambientResult.padEnd(12)} ${ambientRel}\n`);
+    if (ambientResult === 'wrote') {
+      managed.push({ path: ambientRel, installedHash: hashFile(ambientDest) });
+    } else if (ambientResult === 'skipped' && fs.existsSync(ambientDest)) {
+      managed.push({ path: ambientRel, installedHash: hashString(fs.readFileSync(ambientSrc)) });
+    }
+  }
+
   // memory-inject.cjs: render with baked CLI path.
   const injectRel = normalizePath(path.join('.claude', 'hooks', 'memory-inject.cjs'));
   const injectDest = path.join(cwd, injectRel);
@@ -368,6 +383,19 @@ function desiredSettingsHooks(): DesiredHook[] {
         command: 'npx -y @sylphie-labs/memory-pkg consolidate --deep --if-stale 24',
         timeout: 600,
         async: true,
+      },
+    },
+    {
+      // Mid-turn ambient recall on the discovery tools. The hook prefilters
+      // in-process and only spawns the CLI on a genuinely new entity, so the
+      // common case costs just hook startup.
+      event: 'PostToolUse',
+      marker: 'memory-ambient.cjs',
+      matcher: 'Grep|Glob|Read|Task',
+      entry: {
+        type: 'command',
+        command: 'node .claude/hooks/memory-ambient.cjs',
+        timeout: 10,
       },
     },
   ];

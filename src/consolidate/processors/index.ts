@@ -14,6 +14,7 @@ import { embeddingBackfillProcessor } from './embedding-backfill.js';
 import { rationaleProcessor } from './rationale.js';
 import { rationaleBacklogProcessor } from './rationale-backlog.js';
 import { entityLinkProcessor } from './entity-link.js';
+import { referencedCheckProcessor } from './referenced-check.js';
 import { statsFoldProcessor } from './stats-fold.js';
 import { ledgerPruneProcessor } from './ledger-prune.js';
 
@@ -30,6 +31,7 @@ export const PROCESSORS: Processor[] = [
   rationaleProcessor, // tick
   rationaleBacklogProcessor, // deep
   entityLinkProcessor, // both
+  referencedCheckProcessor, // tick
   statsFoldProcessor, // both
   ledgerPruneProcessor, // deep
 ];

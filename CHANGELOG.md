@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-06-12
+
+Phase 5 of the ambient-memory arc — the headline feature: **mid-turn ambient injection**. As Claude works (Grep/Glob/Read/Task), entities it surfaces in tool *inputs* trigger an indexed graph lookup that injects related memories right next to the tool result — including the "why" rationale of a past turn that never named the entity.
+
+### Added
+- **`memory-ambient.cjs` PostToolUse hook** (matcher `Grep|Glob|Read|Task`). Extracts entities from the tool input *in-process* (a vendored, CI-parity-tested copy of the package extractor), dedupes them against an append-only per-session ledger, and only spawns the CLI for a genuinely new entity — so the common case (a file already seen this session) costs nothing but hook startup. Caps: 2 injections/turn, 8/session. Off switch: `MEMORY_PKG_AMBIENT_DISABLED=1`. The turn boundary for the per-turn cap is marked by `memory-inject.cjs` (the only hook that sees a new prompt).
+- **`memory-pkg ambient`** CLI — point-lookup over the entity graph only (no embedding/merger/rerank; a ≤5s hot path). Hybrid output: **strong** (entity has conclusion-grade content — a `turn_rationale` or `assistant_text`, including a one-hop rationale) → a compact `<ambient-memory>` block (≤2 items, ≤800 chars) recorded as an ambient injection; **weak** (entity exists but only tool-call content) → a one-line `searchMemory` hint; **empty** → nothing. Only conclusions are injected mid-turn, never raw tool calls (D15).
+- **Implicit cross-check** (`referenced-check`, tick) — the near-free auditor (F4). For each injection, records an append-only `source='implicit'` rating: `referenced=true` (rating +1) if a later tool_call touched the injected memory's file or a later assistant_text mentioned its entities, else `referenced=false` (rating 0). An independent signal from self-rating, and the fallback driver if self-rating proves noisy.
+
+### Migration
+- `0.7.0 → 0.8.0` installs `memory-ambient.cjs`, re-renders `memory-inject.cjs` (now writes the turn-boundary marker), and merges the PostToolUse settings entry (with its tool matcher). No schema change — the referenced-check reuses the v3 tables.
+
 ## [0.7.0] — 2026-06-12
 
 Phase 4 of the ambient-memory arc: the self-rating feedback loop (schema v3) — the smallest slice that closes inject → persist → rate → fold → score, on the existing prompt path, measurement-only.
