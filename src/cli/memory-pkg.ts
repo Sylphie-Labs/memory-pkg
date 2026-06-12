@@ -67,6 +67,8 @@ async function main(): Promise<void> {
       '  memory-pkg tune [--log PATH]                      (summarize rationale log)\n' +
       '  memory-pkg feedback                               (rating distribution + usefulness gate report)\n' +
       '\n' +
+      '  memory-pkg mcp-server                             Run the MCP server over stdio (used by .mcp.json)\n' +
+      '\n' +
       '  memory-pkg --version                              Print package version\n' +
       '  memory-pkg --help                                 This message\n'
     );
@@ -81,6 +83,17 @@ async function main(): Promise<void> {
     const pkgPath = join(here, '..', '..', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
     process.stdout.write(`${pkg.version}\n`);
+    return;
+  }
+
+  // Host the MCP server. The .mcp.json stanza invokes `memory-pkg mcp-server`,
+  // so this subcommand must exist (the dedicated memory-pkg-mcp bin is the
+  // other entry point). Handled before the try/finally so the shared pool is
+  // NOT closed out from under the long-lived server — it owns its lifecycle and
+  // stays alive on the stdio transport.
+  if (cmd === 'mcp-server' || cmd === 'mcp') {
+    const { startMcpServer } = await import('../mcp-server/index.js');
+    await startMcpServer();
     return;
   }
 

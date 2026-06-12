@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-06-12
+
+### Fixed
+- **MCP server failed to launch (`-32000` / "Failed to reconnect").** The `.mcp.json` stanza `init` generates invokes `npx -y @sylphie-labs/memory-pkg mcp-server` — i.e. the `memory-pkg` bin with an `mcp-server` subcommand — but that subcommand didn't exist (the server lived only in the separate `memory-pkg-mcp` bin), so the process exited immediately with `unknown command: mcp-server` and none of the MCP tools (`searchMemory`, `rateMemoryInjections`, …) were ever available. Added an `mcp-server` (alias `mcp`) command to the CLI that hosts the stdio server, so the existing stanza now launches correctly — **no `.mcp.json` edit needed**, just upgrade and restart Claude Code. The server entry (`startMcpServer`) is now exported and only auto-runs when executed directly. Regression test added.
+
 ## [0.10.0] — 2026-06-12
 
 Phase 7 — the final phase of the ambient-memory arc: the **curated hot tier** (schema v4). High-usefulness entity clusters are distilled into facts that are served as a fast-path tier above raw events.

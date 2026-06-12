@@ -12,6 +12,7 @@
  *   node dist/mcp-server/index.js
  */
 
+import { fileURLToPath } from 'url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -175,7 +176,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
   }
 });
 
-async function main(): Promise<void> {
+/**
+ * Connect the stdio transport and run the server. Exported so the CLI can host
+ * it under `memory-pkg mcp-server` (the `.mcp.json` stanza invokes the
+ * memory-pkg bin with that subcommand). The process stays alive on the stdio
+ * transport's open handles; signal handlers below own teardown.
+ */
+export async function startMcpServer(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write('[memory-pkg] MCP server running on stdio\n');
@@ -191,7 +198,11 @@ process.on('SIGINT', () => { void shutdown(); });
 process.on('SIGTERM', () => { void shutdown(); });
 process.on('disconnect', () => { void shutdown(); });
 
-main().catch((err: unknown) => {
-  process.stderr.write(`[memory-pkg] Fatal error: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-});
+// Auto-start only when executed directly (the memory-pkg-mcp bin), not when
+// imported by the CLI's `mcp-server` command.
+if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+  startMcpServer().catch((err: unknown) => {
+    process.stderr.write(`[memory-pkg] Fatal error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}
