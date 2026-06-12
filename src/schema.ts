@@ -16,7 +16,7 @@ import { runQuery, closePool } from './timescale-client.js';
  * hypertable, subsystem, embedding, transcript_uuid unique index, memory_meta
  * itself).
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const STATEMENTS: Array<{ label: string; sql: string }> = [
   {
@@ -110,6 +110,60 @@ const STATEMENTS: Array<{ label: string; sql: string }> = [
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `,
+  },
+
+  // --- Schema v2 (0.6.0): the entity graph ------------------------------------
+  // Deterministic bipartite entity↔event index. Built by the entity-link
+  // consolidation processor from extractEntities() — no LLM. Enables indexed
+  // point-lookup retrieval (the structural B1 fix and the ambient hook's
+  // surface) and one-hop entity → events → turn → rationale recall.
+  {
+    label: 'table: memory_entities',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_entities (
+        entity_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name_norm    TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        first_seen   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        event_count  INTEGER NOT NULL DEFAULT 0
+      );
+    `,
+  },
+  {
+    label: 'index: entities name_norm trigram',
+    sql: `CREATE INDEX IF NOT EXISTS idx_entities_trgm ON memory_entities USING GIN (name_norm gin_trgm_ops);`,
+  },
+  {
+    label: 'table: memory_entity_events (bipartite links)',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_entity_events (
+        entity_id           UUID NOT NULL,
+        event_id            UUID NOT NULL,
+        event_ts            TIMESTAMPTZ NOT NULL,
+        event_type          TEXT NOT NULL,
+        session_id          TEXT NOT NULL,
+        turn_user_prompt_id UUID,
+        PRIMARY KEY (entity_id, event_id)
+      );
+    `,
+  },
+  {
+    label: 'index: entity_events (entity_id, event_ts DESC)',
+    sql: `CREATE INDEX IF NOT EXISTS idx_entity_events_entity_ts ON memory_entity_events (entity_id, event_ts DESC);`,
+  },
+  {
+    label: 'index: entity_events (event_id)',
+    sql: `CREATE INDEX IF NOT EXISTS idx_entity_events_event ON memory_entity_events (event_id);`,
+  },
+  {
+    // entity → turn → rationale hop: rationale rows point at their turn's
+    // user_prompt via payload->>'source_user_prompt_id'. Partial expression
+    // index keeps that hop indexed (legal on a hypertable; not unique).
+    label: 'index: rationale source_user_prompt_id',
+    sql: `CREATE INDEX IF NOT EXISTS idx_memory_rationale_source
+            ON memory_events ((payload->>'source_user_prompt_id'))
+            WHERE event_type = 'turn_rationale';`,
   },
 ];
 

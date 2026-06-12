@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-12
+
+Phase 3 of the ambient-memory arc: the entity graph (schema v2) — the structural B1 fix and the surface mid-turn ambient injection will stand on.
+
+### Added
+- **Entity graph** (schema v2): `memory_entities` (canonical entity, `name_norm` unique, trigram index) and `memory_entity_events` (bipartite entity↔event links, denormalized event_type/ts/session + turn anchor). Built deterministically by the new **entity-link** consolidation processor from `extractEntities()` — no LLM. Anti-join queued, budgeted, resumable; zero-entity events get a sentinel link so they leave the queue.
+- **Indexed entity retrieval + one-hop associative recall.** The entity tier now resolves an entity to its `entity_id` and reads linked events straight from `memory_entity_events` (an indexed point lookup, not a hypertable scan) — biased `turn_rationale > assistant_text > rest`. It additionally surfaces the **turn rationale** of any turn a linked event belongs to, *even when the rationale text never names the entity* (entity → event → turn → rationale, via the new `idx_memory_rationale_source` expression index). Touch `FilterBar` in a grep and the turn's "why" surfaces. Falls back to the legacy `word_similarity` scan automatically when the graph isn't populated yet (fresh DB / pre-v2 schema), so existing retrieval is unchanged until the first deep pass.
+- **`memory-pkg entity <name>`** — resolve an entity and list its linked events and rationales.
+- `extractEntities` + `normalizeEntity` moved to `src/entities/extract.ts` (shared by the tier, the consolidation processor, and — later — the ambient hook). `src/inject/tiers/entity.ts` re-exports `extractEntities` for back-compat.
+
+### Fixed
+- **Entity-extraction noise.** `assistant_thinking` and `turn_rationale` event-type prefixes leaked from `search_text` as spurious entities; added to the stopword set. The entity-link processor now extracts from the clean `excerpt` rather than `search_text`, so tool-call input-JSON keys (`file_path`, `command`, `replace_all`, `subagent_type`, …) no longer flood the graph.
+
+### Migration
+- `0.5.1 → 0.6.0` creates the schema-v2 tables/indexes (idempotent frozen DDL; degrades to a warning if the DB is unreachable) and stamps `schema_version=2`. Run `consolidate --deep` (or just start a session) to backfill entity links from existing history.
+
 ## [0.5.1] — 2026-06-12
 
 Phase 2 of the ambient-memory arc: the corpus-grain deep pass and the orphan-transcript sweep that fixes silent data loss (B2).

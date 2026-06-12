@@ -62,6 +62,7 @@ async function main(): Promise<void> {
       '  memory-pkg rationale [--session ID] [--limit N]   (uses local `claude` CLI)\n' +
       '  memory-pkg consolidate [--deep] [--if-stale H] [--budget-ms N] [--session ID]\n' +
       '                                                   (run derived-write processors: ingest, rationale, …)\n' +
+      '  memory-pkg entity <name>                         (resolve an entity; list its linked events + rationales)\n' +
       '  memory-pkg inject <prompt-text> [--session ID] [--limit N] [--transcript PATH]\n' +
       '  memory-pkg tune [--log PATH]                      (summarize rationale log)\n' +
       '\n' +
@@ -242,6 +243,52 @@ async function main(): Promise<void> {
         if (!logPath) throw new Error('set DRIFT_MEMORY_LOG_PATH or pass --log PATH');
         const traces = loadTraces(logPath);
         process.stdout.write(formatReport(analyzeTraces(traces)) + '\n');
+        break;
+      }
+
+      case 'entity': {
+        if (!arg) throw new Error('entity name required');
+        const { runQuery } = await import('../timescale-client.js');
+        const { normalizeEntity } = await import('../entities/extract.js');
+        const norm = normalizeEntity(arg);
+        const ents = await runQuery<{
+          entity_id: string;
+          name_norm: string;
+          display_name: string;
+          event_count: number;
+        }>(
+          `SELECT entity_id, name_norm, display_name, event_count
+           FROM memory_entities
+           WHERE name_norm = $1 OR ($1 <% name_norm AND word_similarity($1, name_norm) >= 0.4)
+           ORDER BY (name_norm = $1) DESC, word_similarity($1, name_norm) DESC
+           LIMIT 5`,
+          [norm],
+        );
+        if (ents.length === 0) {
+          process.stdout.write(`no entity matching "${arg}"\n`);
+          break;
+        }
+        for (const e of ents) {
+          process.stdout.write(`entity ${e.display_name} (${e.name_norm}) — ${e.event_count} event(s)\n`);
+          const links = await runQuery<{
+            event_id: string;
+            event_type: string;
+            summary: string | null;
+          }>(
+            `SELECT l.event_id, l.event_type, ev.summary
+             FROM memory_entity_events l
+             JOIN memory_events ev ON ev.event_id = l.event_id AND ev.ts = l.event_ts
+             WHERE l.entity_id = $1 AND l.event_type <> 'tool_result'
+             ORDER BY (l.event_type = 'turn_rationale') DESC, l.event_ts DESC
+             LIMIT 10`,
+            [e.entity_id],
+          );
+          for (const ln of links) {
+            process.stdout.write(
+              `  [${ln.event_type}] ${ln.event_id.slice(0, 8)} ${(ln.summary ?? '').slice(0, 80)}\n`,
+            );
+          }
+        }
         break;
       }
 

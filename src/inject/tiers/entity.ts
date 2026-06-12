@@ -4,8 +4,19 @@
  * Where trigram.ts matches the literal prompt against every event, this tier
  * extracts salient entities (code identifiers, backticked terms, file paths,
  * quoted phrases) from the current prompt + last ~20 lines of the session
- * transcript, then runs a trigram-style word_similarity query per entity in
- * parallel. Top K matches per entity are returned as candidates.
+ * transcript, then resolves each entity to matching events. Top K matches per
+ * entity are returned as candidates.
+ *
+ * Resolution has two paths:
+ *   - graph (schema v2+, after the entity-link processor has populated
+ *     memory_entities): an indexed point lookup — resolve the entity to an
+ *     entity_id, then read its linked events straight from memory_entity_events
+ *     (denormalized event_type/ts/session), biased toward turn_rationale and
+ *     assistant_text. No hypertable scan. This is the structural B1 fix and the
+ *     surface the ambient hook stands on.
+ *   - legacy (fresh DB before the first deep pass, or pre-v2 schema): the
+ *     original per-entity word_similarity scan, now using the GIN-indexable
+ *     `<%` operator. Selected automatically when memory_entities is empty.
  *
  * Purpose: when the prompt is a pronoun or short reference ("ok lets do that"),
  * the literal-prompt trigram finds nothing. The entities we're actually
@@ -14,8 +25,7 @@
  * Metadata surfaced for the orchestrator:
  *   - queried   entities we ran DB queries for (after cap), rank order
  *   - dropped   entities extracted but cut by the cap, rank order
- *   - overflow  { entity: total_matches } when hits > per-entity cap, so the
- *                 orchestrator can hint "call searchMemory for more"
+ *   - overflow  { entity: total_matches } when hits > per-entity cap
  *
  * Env toggles:
  *   DRIFT_MEMORY_TIER_ENTITY_DISABLED=1
@@ -26,95 +36,26 @@
  *     Dampening factor for candidates surfaced by entities that appear only
  *     in the recent transcript (not the current prompt). Default 0.6 means
  *     transcript-only entities still contribute but lose merge-tier ties to
- *     topical retrieval — keeps "recent debugging" from crowding out the
- *     actual question. Set to 1 to disable dampening.
+ *     topical retrieval. Set to 1 to disable dampening.
  */
 
 import { readFileSync } from 'node:fs';
 import { runQuery } from '../../timescale-client.js';
+import { extractEntities, normalizeEntity } from '../../entities/extract.js';
 import type { Tier, TierInput, TierResult, Candidate } from './types.js';
 
 const TIER_NAME = 'entity';
 const MIN_SIMILARITY = 0.2;
+// Fuzzy entity-name resolution floor for the graph path (plan: name_norm ≥ 0.4).
+const ENTITY_NAME_MIN_SIMILARITY = 0.4;
+// Sentinel entity_id the entity-link processor uses to mark zero-entity events
+// as processed; it never matches a real entity at retrieval time.
+const NIL_ENTITY_ID = '00000000-0000-0000-0000-000000000000';
 
-// Capture group 1 = entity text. All patterns are global for `matchAll`.
-// Single-quote regex was removed: contractions (isn't, it's) consistently
-// produced garbage captures like "t a new tier — it" that poisoned the
-// query list. Double-quote + backtick cover the legitimate cases.
-const RE_BACKTICK = /`([^`\n]{2,64})`/g;
-const RE_DOUBLE_QUOTE = /"([^"\n]{3,64})"/g;
-// File-like: must contain at least one letter in the stem, ext 2-5 letters.
-const RE_FILE = /\b([\w./-]*[a-zA-Z][\w./-]*\.[a-zA-Z]{2,5})\b/g;
-// CamelCase: at least two capital-letter transitions so `Postgres` alone misses.
-const RE_CAMEL = /\b([A-Z][a-z0-9]*(?:[A-Z][a-z0-9]*)+)\b/g;
-// snake_case: at least one underscore between alnum runs.
-const RE_SNAKE = /\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b/g;
-
-const REGEXES: RegExp[] = [
-  RE_BACKTICK,
-  RE_DOUBLE_QUOTE,
-  RE_FILE,
-  RE_CAMEL,
-  RE_SNAKE,
-];
-
-// Code-syntax / placeholder / regex characters. If a capture contains any of
-// these it's likely a code fragment ("foo?: string", "DRIFT_X=1", "foo<T>"),
-// a placeholder ("[entity]"), or a regex ("\S+") — poor search query.
-const CODE_SYNTAX_CHARS = /[:=<>?(){}\[\]\\|+*]/;
-// Prose markers: em/en dashes and apostrophes inside a capture mean it's a
-// sentence fragment, not an identifier.
-const PROSE_CHARS = /[\u2014\u2013'\u2019]/;
-
-// Common-word noise that slips through the shape filters. Grouped for clarity.
-const STOPWORDS = new Set([
-  // generic english / code filler
-  'true', 'false', 'null', 'undefined', 'none', 'todo', 'note', 'readme',
-  'license', 'package', 'config', 'index', 'main', 'utils', 'helper',
-  'example', 'sample', 'default', 'this', 'that', 'these', 'those',
-  'the', 'and', 'for', 'with', 'from', 'into', 'your', 'yours',
-  // windows/unix path components (leak from absolute paths in transcripts)
-  'onedrive', 'appdata', 'users', 'desktop', 'code', 'programfiles',
-  'roaming', 'documents', 'downloads', 'local', 'temp', 'home',
-  // memory_events schema column values (event_type) — these are table
-  // columns, not content worth querying for
-  'assistant_text', 'user_prompt', 'tool_call', 'tool_result',
-]);
-
-// Drop absolute path prefixes so components like "OneDrive"/"AppData" don't
-// leak out as separate CamelCase entities. Leaves relative path tails intact
-// for the file regex to catch as a single entity.
-function stripAbsolutePaths(text: string): string {
-  return text
-    // Windows drive-letter paths: "C:\Users\Jim\..."
-    .replace(/[A-Za-z]:[\\/](?:[^\s`"'\n\\/]+[\\/])+/g, '')
-    // Git-Bash style: "/c/Users/Jim/..."
-    .replace(/\/[a-zA-Z]\/Users\/[^\s`"'\n/]+\//g, '')
-    // Unix home paths: "/home/jim/..."
-    .replace(/\/home\/[^\s`"'\n/]+\//g, '');
-}
-
-export function extractEntities(text: string): string[] {
-  if (!text) return [];
-  const corpus = stripAbsolutePaths(text);
-  const out = new Set<string>();
-  for (const re of REGEXES) {
-    for (const m of corpus.matchAll(re)) {
-      const raw = (m[1] ?? '').trim();
-      if (raw.length < 3 || raw.length > 40) continue;
-      if (STOPWORDS.has(raw.toLowerCase())) continue;
-      if (CODE_SYNTAX_CHARS.test(raw)) continue;
-      if (PROSE_CHARS.test(raw)) continue;
-      // Drop multi-word captures > 2 words — those are phrases not entities.
-      if ((raw.match(/\s+/g)?.length ?? 0) > 1) continue;
-      // All-caps captures (TOP, CLI, API) match the CamelCase regex but are
-      // usually acronyms/noise — require ≥1 lowercase letter.
-      if (!/[a-z]/.test(raw)) continue;
-      out.add(raw);
-    }
-  }
-  return [...out];
-}
+// extractEntities + normalizeEntity now live in src/entities/extract.ts
+// (shared with the consolidation processor and the ambient hook). Re-export
+// extractEntities so existing importers (tests, callers) keep working.
+export { extractEntities };
 
 // Pull readable text out of a Claude Code transcript JSONL entry. The
 // format is { type, message: { content: string | ContentBlock[] }, ... }
@@ -162,7 +103,108 @@ interface EntityHit {
   rows: Row[];
 }
 
-async function queryEntity(
+/**
+ * Has the entity graph been populated yet? One cheap probe per tier invocation
+ * (not cached across the process, so it stays correct when tests swap DBs).
+ * Any error — including the table not existing on a pre-v2 schema — means "no,
+ * use the legacy scan".
+ */
+async function isEntityGraphPopulated(): Promise<boolean> {
+  try {
+    const rows = await runQuery<{ has: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM memory_entities LIMIT 1) AS has`,
+    );
+    return rows.length > 0 && rows[0].has === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Graph path: indexed point lookup over memory_entities → memory_entity_events.
+ * Resolves the entity by exact name_norm, falling back to fuzzy `<%` over the
+ * tiny entities trigram index. Scores fold an event-type bias (turn_rationale >
+ * assistant_text > rest) so conclusions outrank mechanics; the result is served
+ * entirely from the denormalized link table — no memory_events scan.
+ */
+async function queryEntityGraph(
+  entity: string,
+  input: TierInput,
+  overfetch: number,
+): Promise<EntityHit> {
+  const norm = normalizeEntity(entity);
+  const params: unknown[] = [norm, ENTITY_NAME_MIN_SIMILARITY, NIL_ENTITY_ID];
+  let i = 4;
+  let sessionFilter = '';
+  if (input.excludeSelf && input.sessionId) {
+    sessionFilter = `AND l.session_id <> $${i++}`;
+    params.push(input.sessionId);
+  }
+  params.push(overfetch);
+  const limitIdx = i;
+
+  // Two sources, merged by max score per event:
+  //   direct -- events whose own text contains the entity (the link rows),
+  //             biased turn_rationale > assistant_text > rest.
+  //   hop    -- the turn_rationale of any turn a linked event belongs to, even
+  //             when the rationale text never names the entity. This is the
+  //             associative recall the graph exists for: touch FilterBar in a
+  //             grep, surface the turn's "why" without the rationale naming it.
+  //             Uses idx_memory_rationale_source (indexed payload hop).
+  const sql = `
+    WITH ent AS (
+      SELECT entity_id, match FROM (
+        SELECT entity_id, 1.0::float8 AS match, 0 AS pri
+          FROM memory_entities WHERE name_norm = $1
+        UNION ALL
+        SELECT entity_id, word_similarity($1, name_norm) AS match, 1 AS pri
+          FROM memory_entities
+          WHERE $1 <% name_norm AND word_similarity($1, name_norm) >= $2
+      ) c
+      ORDER BY pri ASC, match DESC
+      LIMIT 1
+    ),
+    links AS (
+      SELECT l.event_id, l.event_type, l.event_ts, l.turn_user_prompt_id, ent.match
+      FROM ent
+      JOIN memory_entity_events l ON l.entity_id = ent.entity_id
+      WHERE l.entity_id <> $3
+        AND l.event_type <> 'tool_result'
+        ${sessionFilter}
+    ),
+    direct AS (
+      SELECT event_id,
+             (CASE event_type
+                WHEN 'turn_rationale' THEN 1.0
+                WHEN 'assistant_text' THEN 0.95
+                ELSE 0.9
+              END) * match AS score
+      FROM links
+    ),
+    hop AS (
+      SELECT r.event_id, 0.9 * (SELECT max(match) FROM links) AS score
+      FROM memory_events r
+      WHERE r.event_type = 'turn_rationale'
+        AND r.payload->>'source_user_prompt_id' IN (
+          SELECT DISTINCT turn_user_prompt_id::text
+          FROM links WHERE turn_user_prompt_id IS NOT NULL
+        )
+    )
+    SELECT event_id, MAX(score) AS score
+    FROM (SELECT * FROM direct UNION ALL SELECT * FROM hop) u
+    GROUP BY event_id
+    ORDER BY score DESC
+    LIMIT $${limitIdx}
+  `;
+  const rows = await runQuery<Row>(sql, params);
+  return { entity, rows: rows.map((r) => ({ event_id: r.event_id, score: Number(r.score) })) };
+}
+
+/**
+ * Legacy path: per-entity word_similarity scan (GIN-indexable via `<%`). Used
+ * when the entity graph isn't populated yet.
+ */
+async function queryEntityLegacy(
   entity: string,
   input: TierInput,
   overfetch: number,
@@ -195,6 +237,17 @@ async function queryEntity(
   `;
   const rows = await runQuery<Row>(sql, params);
   return { entity, rows };
+}
+
+function queryEntity(
+  entity: string,
+  input: TierInput,
+  overfetch: number,
+  useGraph: boolean,
+): Promise<EntityHit> {
+  return useGraph
+    ? queryEntityGraph(entity, input, overfetch)
+    : queryEntityLegacy(entity, input, overfetch);
 }
 
 export const entityTier: Tier = async (input: TierInput): Promise<TierResult> => {
@@ -247,7 +300,8 @@ export const entityTier: Tier = async (input: TierInput): Promise<TierResult> =>
 
   let hits: EntityHit[];
   try {
-    hits = await Promise.all(queried.map((e) => queryEntity(e, input, overfetch)));
+    const useGraph = await isEntityGraphPopulated();
+    hits = await Promise.all(queried.map((e) => queryEntity(e, input, overfetch, useGraph)));
   } catch (err) {
     return {
       tier: TIER_NAME,

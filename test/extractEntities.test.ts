@@ -13,9 +13,9 @@ describe('extractEntities', () => {
   });
 
   it('pulls CamelCase and snake_case identifiers', () => {
-    const out = extractEntities('the MemoryEvents table and turn_rationale rows');
+    const out = extractEntities('the MemoryEvents table and reset_handler rows');
     expect(out).toContain('MemoryEvents');
-    expect(out).toContain('turn_rationale');
+    expect(out).toContain('reset_handler');
   });
 
   it('drops schema/stopword tokens even when shaped like identifiers', () => {
