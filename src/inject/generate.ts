@@ -210,6 +210,25 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
 
   const rows = await fetchEventsByIds(merged.map((c) => c.event_id));
 
+  // Usefulness multiplier. Computed from rating history; recorded as shadow on
+  // every persisted injection, and — only when MEMORY_PKG_USEFULNESS_LIVE — also
+  // applied to the merged score here, BEFORE the strong/ambiguous split, never
+  // inside mergeCandidates/tier weights (D8). Phases ≤5 are shadow-only.
+  const usefulnessLive = !!process.env.MEMORY_PKG_USEFULNESS_LIVE;
+  const multMap = new Map<string, { m: number; merged: number }>();
+  if (usefulnessLive || opts.persistInjection) {
+    const stats = await fetchStats(merged.map((c) => c.event_id));
+    const muRaw = await getMeta('rating_mean');
+    const mu = muRaw ? parseFloat(muRaw) || 0 : 0;
+    const now = Date.now();
+    for (const c of merged) {
+      const s = stats.get(c.event_id) ?? { n_self: 0, sum_self: 0, n_implicit: 0, sum_implicit: 0, last_rated_at: null };
+      const m = statsMultiplier(s, now, mu);
+      multMap.set(c.event_id, { m, merged: c.score });
+      if (usefulnessLive) c.score = c.score * m;
+    }
+  }
+
   type Ranked = { candidate: MergedCandidate; row: EventRow; relevance: 0 | 1 | 2 };
   const strong: Ranked[] = [];
   const ambiguous: { candidate: MergedCandidate; row: EventRow }[] = [];
@@ -362,18 +381,16 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
   // but NOT applied to ranking yet (Phase 4 is measurement-only).
   if (opts.persistInjection && includedRows.length > 0) {
     try {
-      const ids = includedRows.map((r) => r.event_id);
-      const [stats, muRaw] = await Promise.all([fetchStats(ids), getMeta('rating_mean')]);
-      const mu = muRaw ? parseFloat(muRaw) || 0 : 0;
-      const now = Date.now();
       const shadowScores: Record<string, { merged: number; multiplier: number; effective: number }> = {};
       for (const rr of includedRows) {
-        const s = stats.get(rr.event_id) ?? { n_self: 0, sum_self: 0, n_implicit: 0, sum_implicit: 0, last_rated_at: null };
-        const m = statsMultiplier(s, now, mu);
+        // multMap was populated above (persistInjection guarantees it). merged is
+        // the ORIGINAL score; rr.merged_score may already be the effective one
+        // when live, so always read the original from the map.
+        const mm = multMap.get(rr.event_id) ?? { m: 1, merged: rr.merged_score };
         shadowScores[rr.event_id] = {
-          merged: rr.merged_score,
-          multiplier: m,
-          effective: rr.merged_score * m,
+          merged: mm.merged,
+          multiplier: mm.m,
+          effective: mm.merged * mm.m,
         };
       }
       const injectionId = await recordInjection({

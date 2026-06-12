@@ -16,6 +16,7 @@ import { rationaleBacklogProcessor } from './rationale-backlog.js';
 import { entityLinkProcessor } from './entity-link.js';
 import { referencedCheckProcessor } from './referenced-check.js';
 import { statsFoldProcessor } from './stats-fold.js';
+import { ratingMeanProcessor } from './rating-mean.js';
 import { ledgerPruneProcessor } from './ledger-prune.js';
 
 // Order matters. orphan-sweep (deep) runs before ingest-flush so back-captured
@@ -33,5 +34,6 @@ export const PROCESSORS: Processor[] = [
   entityLinkProcessor, // both
   referencedCheckProcessor, // tick
   statsFoldProcessor, // both
+  ratingMeanProcessor, // deep
   ledgerPruneProcessor, // deep
 ];

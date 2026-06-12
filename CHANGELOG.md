@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-12
+
+Phase 6 of the ambient-memory arc: the usefulness multiplier can now go **live** — gated, opt-in, and measured first.
+
+### Added
+- **Live usefulness multiplier.** When `MEMORY_PKG_USEFULNESS_LIVE=1`, each candidate's merged score is multiplied by its usefulness multiplier (clamp 0.7–1.3) **after the merge, before the strong/ambiguous split** — never inside the tier weights (D8). Default-off: until the gate passes, the multiplier is computed and recorded as shadow but does not touch ranking, so the signal is observed before it influences retrieval.
+- **`rating-mean`** consolidation processor (deep) — maintains the trailing-90-day global mean rating (μ, the positive-skew normalizer subtracted inside `usefulness()`) in `memory_meta.rating_mean`, implicit ratings at half weight.
+- **`memory-pkg feedback`** — the gate report: rating distribution, rated-injection count, days of shadow data, the shadow **flip-rate** (fraction of multi-item injections the multiplier would reorder, computed from `shadow_scores`), and a GO/NO-GO against the D9 gate (≥200 rated AND ≥14 days AND flip-rate 5–40%).
+
+### Migration
+- `0.8.0 → 0.9.0` is a no-op for the consumer repo (all changes are package-side; the live flag is opt-in). No hooks, settings, or schema change.
+
 ## [0.8.0] — 2026-06-12
 
 Phase 5 of the ambient-memory arc — the headline feature: **mid-turn ambient injection**. As Claude works (Grep/Glob/Read/Task), entities it surfaces in tool *inputs* trigger an indexed graph lookup that injects related memories right next to the tool result — including the "why" rationale of a past turn that never named the entity.

@@ -65,6 +65,7 @@ async function main(): Promise<void> {
       '  memory-pkg entity <name>                         (resolve an entity; list its linked events + rationales)\n' +
       '  memory-pkg inject <prompt-text> [--session ID] [--limit N] [--transcript PATH]\n' +
       '  memory-pkg tune [--log PATH]                      (summarize rationale log)\n' +
+      '  memory-pkg feedback                               (rating distribution + usefulness gate report)\n' +
       '\n' +
       '  memory-pkg --version                              Print package version\n' +
       '  memory-pkg --help                                 This message\n'
@@ -243,6 +244,12 @@ async function main(): Promise<void> {
         if (!logPath) throw new Error('set DRIFT_MEMORY_LOG_PATH or pass --log PATH');
         const traces = loadTraces(logPath);
         process.stdout.write(formatReport(analyzeTraces(traces)) + '\n');
+        break;
+      }
+
+      case 'feedback': {
+        const { runFeedback } = await import('./feedback.js');
+        await runFeedback();
         break;
       }
 
