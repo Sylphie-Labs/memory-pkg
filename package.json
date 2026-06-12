@@ -1,6 +1,6 @@
 {
   "name": "@sylphie-labs/memory-pkg",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Long-term session memory for Claude Code. Captures every transcript, indexes events in TimescaleDB, and auto-injects relevant history into every new prompt. Multi-tier retrieval with a SQL-only fast path; rationale synthesis compresses turns into searchable 'why' events at ingest.",
   "keywords": [
     "claude",

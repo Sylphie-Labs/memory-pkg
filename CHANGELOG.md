@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-06-12
+
+Phase 2 of the ambient-memory arc: the corpus-grain deep pass and the orphan-transcript sweep that fixes silent data loss (B2).
+
+### Added
+- **Deep consolidation pass** (`consolidate --deep`). Runs corpus-grain processors: the orphan-transcript sweep, an embedding backlog drain, and a cross-session rationale backlog drain. Wired as a **SessionStart** hook with `--if-stale 24`, so it runs at most once per 24h and otherwise no-ops in well under a second.
+- **Orphan-transcript sweep** (B2 fix). When a terminal is killed mid-session, the per-session byte cursor never advances and every event past it is stranded — even though the transcript JSONL is intact on disk. The deep pass now compares each transcript's size against its cursor and back-captures the delta into `buffer.jsonl` (reusing the capture hook's own `processTranscript` for byte-identical parsing). A 10-minute idle gate keeps it from touching live sessions; the cursor advance plus the `(session_id, transcript_uuid, ts)` unique index make double-capture a no-op. Kill switch: `MEMORY_PKG_SWEEP_DISABLED=1`.
+- **`backfillEmbeddings(batchSize, deadline?)`** is now budget-aware — it stops between batches at the deadline and the next deep pass resumes.
+
+### Changed
+- Processor registry order is now `orphan-sweep → ingest-flush → embedding-backfill → rationale (tick) → rationale-backlog (deep)`, so back-captured deltas are flushed and enriched within the same deep pass. Migration `0.5.0 → 0.5.1` adds the SessionStart hook (settings-only).
+
 ## [0.5.0] — 2026-06-12
 
 The first phase of the ambient-memory arc: a "dream-state" consolidation entrypoint that owns all derived writes, plus the trigram-index fix that everything mid-turn will stand on. See `docs/ambient-memory-plan.md`.

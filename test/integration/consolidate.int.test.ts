@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync, utimesSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { createTestDb, withEnvAsync, type TestDb } from '../helpers/db.js';
@@ -18,6 +18,8 @@ import { closePool, runQuery } from '../../src/timescale-client.js';
 import { runConsolidation } from '../../src/consolidate/runner.js';
 import { getMeta } from '../../src/consolidate/meta.js';
 import { ingestFlushProcessor } from '../../src/consolidate/processors/ingest-flush.js';
+import { orphanSweepProcessor } from '../../src/consolidate/processors/orphan-sweep.js';
+import { makeTranscript, userLine, assistantLine, userPrompt, assistantText } from '../helpers/transcript.js';
 
 const { Client } = pg;
 
@@ -120,6 +122,43 @@ describe('consolidate runner (integration)', () => {
       expect(r2.ran).toBe(false);
       expect(r2.skipped).toBe('fresh');
     });
+  });
+
+  it('deep pass: orphan-sweep back-captures a stranded transcript, ingest-flush lands it (B2 e2e)', async (ctx) => {
+    if (!db) return ctx.skip();
+    await closePool();
+    const txDir = mkdtempSync(path.join(tmpdir(), 'mpkg-tx-'));
+    const sid = 'orphan-e2e';
+    const file = path.join(txDir, `${sid}.jsonl`);
+    writeFileSync(
+      file,
+      makeTranscript(sid, [
+        userLine(userPrompt('orphaned session about ParserCore tokenizer')),
+        assistantLine(assistantText('Recovered after a killed terminal.')),
+      ]),
+      'utf8',
+    );
+    const old = (Date.now() - 30 * 60 * 1000) / 1000;
+    utimesSync(file, old, old);
+
+    try {
+      await withEnvAsync(
+        { ...env(), MEMORY_PKG_TRANSCRIPT_DIR: txDir, CLAUDE_PROJECT_DIR: bufferDir },
+        async () => {
+          const before = await countRows();
+          const r = await runConsolidation({
+            deep: true,
+            bufferDir,
+            processors: [orphanSweepProcessor, ingestFlushProcessor],
+          });
+          expect(r.ran).toBe(true);
+          // user_prompt + assistant_text recovered and ingested.
+          expect(await countRows()).toBe(before + 2);
+        },
+      );
+    } finally {
+      rmSync(txDir, { recursive: true, force: true });
+    }
   });
 
   it('pooled connections carry the lowered word_similarity threshold (B1 enabler)', async (ctx) => {

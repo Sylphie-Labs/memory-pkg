@@ -97,10 +97,14 @@ export function toVectorLiteral(vec: number[]): string {
  * Backfill embeddings for rows where `embedding IS NULL` in batches.
  * Picks embed source as excerpt ?? summary ?? search_text.
  */
-export async function backfillEmbeddings(batchSize = 32): Promise<{ updated: number }> {
+export async function backfillEmbeddings(
+  batchSize = 32,
+  deadline?: number,
+): Promise<{ updated: number }> {
   let updated = 0;
 
   while (true) {
+    if (deadline !== undefined && Date.now() >= deadline) break;
     const rows = await runQuery<{
       event_id: string;
       ts: string;

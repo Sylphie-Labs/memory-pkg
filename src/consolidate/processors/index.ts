@@ -8,10 +8,20 @@
  */
 
 import type { Processor } from '../types.js';
+import { orphanSweepProcessor } from './orphan-sweep.js';
 import { ingestFlushProcessor } from './ingest-flush.js';
+import { embeddingBackfillProcessor } from './embedding-backfill.js';
 import { rationaleProcessor } from './rationale.js';
+import { rationaleBacklogProcessor } from './rationale-backlog.js';
 
+// Order matters. orphan-sweep (deep) runs before ingest-flush so back-captured
+// deltas are flushed in the same deep pass; rationale processors run after the
+// flush so they see freshly-landed turns. Cadence filtering in the runner
+// decides which actually execute on a given tick vs deep run.
 export const PROCESSORS: Processor[] = [
-  ingestFlushProcessor,
-  rationaleProcessor,
+  orphanSweepProcessor, // deep
+  ingestFlushProcessor, // both
+  embeddingBackfillProcessor, // deep
+  rationaleProcessor, // tick
+  rationaleBacklogProcessor, // deep
 ];

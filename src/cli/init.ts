@@ -330,6 +330,20 @@ function desiredSettingsHooks(): DesiredHook[] {
         async: true,
       },
     },
+    {
+      // Corpus-grain deep pass on session start: orphan sweep, embedding +
+      // rationale backlog. --if-stale 24 makes it a cheap no-op when a deep
+      // pass already ran in the last 24h, so it costs ~one short process per
+      // session start.
+      event: 'SessionStart',
+      marker: 'consolidate --deep',
+      entry: {
+        type: 'command',
+        command: 'npx -y @sylphie-labs/memory-pkg consolidate --deep --if-stale 24',
+        timeout: 600,
+        async: true,
+      },
+    },
   ];
 }
 

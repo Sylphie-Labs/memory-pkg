@@ -37,6 +37,14 @@ function allCommands(s: any): string[] {
   }
   return out;
 }
+/** Hook command strings for a single event. */
+function commandsForEvent(s: any, event: string): string[] {
+  const out: string[] = [];
+  for (const g of (s.hooks?.[event] ?? []) as any[]) {
+    for (const h of g.hooks ?? []) out.push(h.command);
+  }
+  return out;
+}
 
 beforeEach(() => {
   cwd = mkdtempSync(path.join(tmpdir(), 'mpkg-settings-'));
@@ -55,6 +63,9 @@ describe('installSettings consolidate wiring', () => {
     expect(cmds.some((c) => c.includes('memory-capture.cjs'))).toBe(true);
     // No legacy ingest chain.
     expect(cmds.some((c) => c.includes('memory-pkg ingest'))).toBe(false);
+    // SessionStart deep pass with the staleness guard (Phase 2).
+    const ss = commandsForEvent(readSettings(), 'SessionStart');
+    expect(ss.some((c) => c.includes('consolidate --deep --if-stale 24'))).toBe(true);
   });
 
   it('is idempotent: a second run makes no changes', () => {
@@ -113,10 +124,12 @@ describe('installSettings consolidate wiring', () => {
     });
 
     installSettings(cwd, { force: false, dryRun: false });
-    const cmds = allCommands(readSettings());
+    const stopCmds = commandsForEvent(readSettings(), 'Stop');
 
-    expect(cmds.filter((c) => c.includes('memory-pkg consolidate')).length).toBe(1);
-    expect(cmds.some((c) => c.includes('memory-pkg ingest'))).toBe(false);
+    // Exactly one consolidate entry under Stop (the SessionStart deep entry is
+    // a separate event and does not count here).
+    expect(stopCmds.filter((c) => c.includes('memory-pkg consolidate')).length).toBe(1);
+    expect(stopCmds.some((c) => c.includes('memory-pkg ingest'))).toBe(false);
   });
 
   it('leaves an unparseable settings.json untouched', () => {
