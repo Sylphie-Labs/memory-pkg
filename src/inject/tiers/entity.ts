@@ -171,6 +171,8 @@ async function queryEntity(
     'search_text IS NOT NULL',
     'excerpt IS NOT NULL',
     `event_type <> 'tool_result'`,
+    // GIN-indexable pre-filter (see trigram.ts); recheck below holds the floor.
+    '$1 <% search_text',
   ];
   const params: unknown[] = [entity];
   let i = 2;

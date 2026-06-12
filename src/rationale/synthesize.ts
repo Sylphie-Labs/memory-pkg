@@ -239,6 +239,13 @@ async function insertRationale(turn: Turn, rationale: string): Promise<void> {
 export async function synthesizeRationales(opts: {
   sessionId?: string;
   limit?: number;
+  /**
+   * Epoch-ms budget ceiling. When set, stop before starting another turn's
+   * `claude -p` spawn once the deadline has passed; the remaining turns are
+   * picked up by the next consolidation run (the anti-join queue makes this
+   * resumable). The turn already in flight is allowed to finish.
+   */
+  deadline?: number;
 }): Promise<{ synthesized: number; skipped: number }> {
   const turns = await findTurnsWithoutRationale(opts.sessionId, opts.limit ?? 20);
 
@@ -246,6 +253,8 @@ export async function synthesizeRationales(opts: {
   let skipped = 0;
 
   for (const turn of turns) {
+    if (opts.deadline !== undefined && Date.now() >= opts.deadline) break;
+
     // Skip empty turns (no assistant activity).
     const hasAssistant = turn.events.some(
       (e) => e.event_type === 'assistant_text' || e.event_type === 'tool_call'

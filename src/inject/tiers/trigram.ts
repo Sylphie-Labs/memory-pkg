@@ -32,6 +32,10 @@ export const trigramTier: Tier = async (input: TierInput): Promise<TierResult> =
     'search_text IS NOT NULL',
     'excerpt IS NOT NULL',
     `event_type <> 'tool_result'`,
+    // `<%` is GIN-indexable (idx_memory_trgm) via the %> commutator, so this
+    // pre-filters on the index instead of seq-scanning every row. The explicit
+    // word_similarity >= $min recheck below keeps the exact 0.2 floor.
+    '$1 <% search_text',
   ];
   const params: unknown[] = [input.query];
   let i = 2;

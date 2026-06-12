@@ -13,6 +13,7 @@ import * as path from 'path';
 import { getPool, closePool } from '../timescale-client.js';
 import { deriveSubsystem } from '../subsystem.js';
 import { embedMany, toVectorLiteral } from '../embed.js';
+import { acquireNamedLock, releaseNamedLock } from '../consolidate/lock.js';
 
 const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
 const BUFFER_DIR = path.join(PROJECT_DIR, '.claude', 'memory');
@@ -41,34 +42,11 @@ const LOCK_STALE_MS = 10 * 60 * 1000; // a Stop-hook ingest should never take 10
  * as a crashed run and broken.
  */
 export function acquireLock(bufDir: string): boolean {
-  const lockFile = path.join(bufDir, 'ingest.lock');
-  if (!fs.existsSync(bufDir)) fs.mkdirSync(bufDir, { recursive: true });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const fd = fs.openSync(lockFile, 'wx');
-      fs.writeSync(fd, JSON.stringify({ pid: process.pid, ts: new Date().toISOString() }));
-      fs.closeSync(fd);
-      return true;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-      try {
-        const ageMs = Date.now() - fs.statSync(lockFile).mtimeMs;
-        if (ageMs <= LOCK_STALE_MS) return false; // live lock — back off
-        fs.unlinkSync(lockFile); // stale — break it and retry the create
-      } catch {
-        // Lock vanished between open and stat/unlink — loop and retry create.
-      }
-    }
-  }
-  return false;
+  return acquireNamedLock(bufDir, 'ingest.lock', LOCK_STALE_MS);
 }
 
 export function releaseLock(bufDir: string): void {
-  try {
-    fs.unlinkSync(path.join(bufDir, 'ingest.lock'));
-  } catch {
-    // already gone — fine
-  }
+  releaseNamedLock(bufDir, 'ingest.lock');
 }
 
 export function rotateBuffer(bufDir: string): string | null {

@@ -60,6 +60,8 @@ async function main(): Promise<void> {
       '  memory-pkg backfill-subsystems\n' +
       '  memory-pkg backfill-embeddings [--batch N]\n' +
       '  memory-pkg rationale [--session ID] [--limit N]   (uses local `claude` CLI)\n' +
+      '  memory-pkg consolidate [--deep] [--if-stale H] [--budget-ms N] [--session ID]\n' +
+      '                                                   (run derived-write processors: ingest, rationale, …)\n' +
       '  memory-pkg inject <prompt-text> [--session ID] [--limit N] [--transcript PATH]\n' +
       '  memory-pkg tune [--log PATH]                      (summarize rationale log)\n' +
       '\n' +
@@ -207,6 +209,30 @@ async function main(): Promise<void> {
           limit: flags.limit ? parseInt(flags.limit, 10) : undefined,
         });
         process.stdout.write(`synthesized ${r.synthesized}, skipped ${r.skipped}\n`);
+        break;
+      }
+
+      case 'consolidate': {
+        // No positional arg; flags may include the first token (arg), so
+        // re-parse the full tail like `inject` does.
+        const cflags = parseFlags([arg, ...rest].filter((x): x is string => Boolean(x)));
+        const { runConsolidation } = await import('../consolidate/runner.js');
+        const r = await runConsolidation({
+          deep: cflags.deep === 'true',
+          sessionId: cflags.session,
+          budgetMs: cflags['budget-ms'] ? parseInt(cflags['budget-ms'], 10) : undefined,
+          ifStaleHours: cflags['if-stale'] ? parseInt(cflags['if-stale'], 10) : undefined,
+        });
+        if (!r.ran) {
+          process.stdout.write(`consolidate skipped: ${r.skipped}\n`);
+        } else {
+          const summary = r.processors
+            .map((p) => `${p.name}(processed=${p.processed},skipped=${p.skipped})`)
+            .join(' ');
+          process.stdout.write(
+            `consolidate ${r.deep ? 'deep' : 'tick'} done: ${summary || '(no processors ran)'}\n`,
+          );
+        }
         break;
       }
 

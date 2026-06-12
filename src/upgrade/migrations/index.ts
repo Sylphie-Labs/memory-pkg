@@ -16,6 +16,8 @@ import migration_0_1_0_to_0_2_0 from './0.1.0-to-0.2.0.js';
 import migration_0_2_0_to_0_3_0 from './0.2.0-to-0.3.0.js';
 import migration_0_3_0_to_0_4_0 from './0.3.0-to-0.4.0.js';
 import migration_0_4_0_to_0_4_1 from './0.4.0-to-0.4.1.js';
+import migration_0_4_1_to_0_4_2 from './0.4.1-to-0.4.2.js';
+import migration_0_4_2_to_0_5_0 from './0.4.2-to-0.5.0.js';
 
 // Add migrations here as new versions ship.
 
@@ -24,6 +26,8 @@ export const MIGRATIONS: Migration[] = [
   migration_0_2_0_to_0_3_0,
   migration_0_3_0_to_0_4_0,
   migration_0_4_0_to_0_4_1,
+  migration_0_4_1_to_0_4_2,
+  migration_0_4_2_to_0_5_0,
 ];
 
 export type { Migration, MigrationContext, MigrationResult, MigrationSeverity } from './types.js';

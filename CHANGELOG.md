@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-12
+
+The first phase of the ambient-memory arc: a "dream-state" consolidation entrypoint that owns all derived writes, plus the trigram-index fix that everything mid-turn will stand on. See `docs/ambient-memory-plan.md`.
+
+### Added
+- **`memory-pkg consolidate [--deep] [--if-stale H] [--budget-ms N] [--session ID]`** — the single entrypoint for all derived-write work (ingest flush, rationale synthesis, and future processors). Runs registered processors behind one shared lock (`consolidate.lock`) within an internal time budget, replacing the `ingest && rationale` Stop-hook chain. `--deep` runs the corpus-grain pass; `--if-stale H` cheaply no-ops when a deep pass ran within H hours (tracked in `memory_meta.deep_last_ran_at`).
+- **Consolidation framework** (`src/consolidate/`): a `Processor` contract (idempotent, killable, resumable, anti-join-queued), a `runner` with cadence filtering (tick vs deep), per-run time budgeting, and a shared named-lock module generalized from `ingest.lock`.
+
+### Fixed
+- **Trigram/entity tiers now use the GIN index** (B1). Both tiers called `word_similarity()` as a function in `WHERE`, which forced a sequential scan of the whole `memory_events` hypertable. They now pre-filter with the index-supported `$1 <% search_text` operator (GIN-indexable via the `%>` commutator on `idx_memory_trgm`), with the exact `word_similarity(...) >= 0.2` floor kept as a recheck. `pg_trgm.word_similarity_threshold` is set to `0.2` on every pooled connection so the operator matches the retrieval floor.
+- **Rationale synthesis had no concurrency lock** (B3). Rapid turns could overlap two async Stop hooks and double the `claude -p` spend; the shared `consolidate.lock` now serializes all derived-write work.
+- **Consolidation budget was the hook timeout** (B4). A long session could leave a `claude -p` SIGTERM'd mid-run; the budget now lives inside the `consolidate` entrypoint, which stops launching work before the deadline and resumes on the next run via the anti-join queue.
+- **Upgrade path gap 0.4.1 → 0.4.2** — added the missing no-op migration so `memory-pkg upgrade` can traverse to 0.5.0 from any 0.4.x install.
+
+### Changed
+- **`init`/upgrade settings wiring** — `installSettings` now honors a per-entry tool `matcher` and a `replaces` list (legacy command markers it supersedes). The Stop-hook entry is now `npx -y @sylphie-labs/memory-pkg consolidate`; the old `ingest && rationale` entry is stripped on upgrade. Migration `0.4.2 → 0.5.0` performs this settings swap (no schema change).
+
 ## [0.4.2] — 2026-06-11
 
 ### Fixed

@@ -269,15 +269,34 @@ function installMcp(cwd: string, flags: Flags): void {
 
 type HookEntry = { type: string; command: string; timeout?: number; async?: boolean };
 type HookGroup = { matcher?: string; hooks?: HookEntry[] };
+type HookEventName = 'UserPromptSubmit' | 'Stop' | 'SessionStart' | 'PostToolUse';
+
+interface DesiredHook {
+  event: HookEventName;
+  /** Substring identifying this entry's command for idempotent detection. */
+  marker: string;
+  entry: HookEntry;
+  /**
+   * Tool matcher for the group this entry lives in (PostToolUse/PreToolUse).
+   * Defaults to '' (the catch-all group we own for UserPromptSubmit/Stop/etc).
+   */
+  matcher?: string;
+  /**
+   * Legacy command markers this entry supersedes. Any existing hook whose
+   * command contains one of these is removed before merging — used to retire
+   * commands that an entry replaces (e.g. consolidate replaces the old
+   * `ingest && rationale` Stop chain) regardless of --force.
+   */
+  replaces?: string[];
+}
 
 /**
  * The hook entries we want present in .claude/settings.json, with a marker
  * substring used to detect whether an equivalent entry already exists.
  * Commands are cross-platform: relative paths (hooks run with cwd = project
- * dir), no shell variable expansion, no redirects; `&&` works in both sh and
- * cmd.exe.
+ * dir), no shell variable expansion, no redirects.
  */
-function desiredSettingsHooks(): Array<{ event: 'UserPromptSubmit' | 'Stop'; marker: string; entry: HookEntry }> {
+function desiredSettingsHooks(): DesiredHook[] {
   return [
     {
       event: 'UserPromptSubmit',
@@ -298,12 +317,15 @@ function desiredSettingsHooks(): Array<{ event: 'UserPromptSubmit' | 'Stop'; mar
       },
     },
     {
+      // The consolidation entrypoint: owns ingest + rationale (+ future
+      // derived-write processors) behind one lock and internal budget.
+      // Supersedes the old `ingest && rationale` Stop chain.
       event: 'Stop',
-      marker: 'memory-pkg ingest',
+      marker: 'memory-pkg consolidate',
+      replaces: ['memory-pkg ingest'],
       entry: {
         type: 'command',
-        command:
-          'npx -y @sylphie-labs/memory-pkg ingest && npx -y @sylphie-labs/memory-pkg rationale --limit 20',
+        command: 'npx -y @sylphie-labs/memory-pkg consolidate',
         timeout: 120,
         async: true,
       },
@@ -345,31 +367,46 @@ export function installSettings(cwd: string, flags: Pick<Flags, 'force' | 'dryRu
 
   const desired = desiredSettingsHooks();
   const added: string[] = [];
+  let stripped = 0;
 
-  for (const { event, marker, entry } of desired) {
+  for (const { event, marker, entry, matcher = '', replaces } of desired) {
     let groups: HookGroup[] = Array.isArray(hooks[event]) ? (hooks[event] as HookGroup[]) : [];
 
-    if (flags.force) {
-      // Drop our previous entries (matched by marker) so the fresh ones win.
+    // Markers to strip before merging: superseded legacy commands always, plus
+    // our own marker when --force (so the fresh entry wins).
+    const stripMarkers = [...(replaces ?? [])];
+    if (flags.force) stripMarkers.push(marker);
+
+    if (stripMarkers.length > 0) {
+      let removed = 0;
       groups = groups
-        .map((g) => ({
-          ...g,
-          hooks: (g.hooks ?? []).filter(
-            (h) => !(typeof h.command === 'string' && h.command.includes(marker)),
-          ),
-        }))
+        .map((g) => {
+          const kept = (g.hooks ?? []).filter(
+            (h) =>
+              !(typeof h.command === 'string' && stripMarkers.some((m) => h.command.includes(m))),
+          );
+          removed += (g.hooks ?? []).length - kept.length;
+          return { ...g, hooks: kept };
+        })
         .filter((g) => (g.hooks ?? []).length > 0);
+      if (removed > 0) {
+        stripped += removed;
+        hooks[event] = groups;
+      }
     }
 
     const present = groups.some((g) =>
       (g.hooks ?? []).some((h) => typeof h.command === 'string' && h.command.includes(marker)),
     );
-    if (present) continue;
+    if (present) {
+      hooks[event] = groups;
+      continue;
+    }
 
-    // Append into (or create) a matcher-'' group we control.
-    let target = groups.find((g) => (g.matcher ?? '') === '');
+    // Append into (or create) the group with the entry's matcher.
+    let target = groups.find((g) => (g.matcher ?? '') === matcher);
     if (!target) {
-      target = { matcher: '', hooks: [] };
+      target = { matcher, hooks: [] };
       groups.push(target);
     }
     target.hooks = target.hooks ?? [];
@@ -378,18 +415,22 @@ export function installSettings(cwd: string, flags: Pick<Flags, 'force' | 'dryRu
     hooks[event] = groups;
   }
 
-  if (added.length === 0) {
+  if (added.length === 0 && stripped === 0) {
     process.stdout.write(`[init] settings: ${rel} already wired (no changes)\n`);
     return;
   }
   if (flags.dryRun) {
-    process.stdout.write(`[init] settings: would-write ${rel} (+${added.length} hook entr${added.length === 1 ? 'y' : 'ies'})\n`);
+    process.stdout.write(
+      `[init] settings: would-write ${rel} (+${added.length} hook entr${added.length === 1 ? 'y' : 'ies'}` +
+        `${stripped > 0 ? `, -${stripped} superseded` : ''})\n`,
+    );
     return;
   }
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, JSON.stringify(settings, null, 2) + '\n', 'utf8');
   process.stdout.write(`[init] settings: wrote ${rel}\n`);
   for (const a of added) process.stdout.write(`  added       ${a}\n`);
+  if (stripped > 0) process.stdout.write(`  removed     ${stripped} superseded entr${stripped === 1 ? 'y' : 'ies'}\n`);
 }
 
 function printSettingsSnippet(): void {
@@ -419,8 +460,7 @@ function printSettingsSnippet(): void {
             },
             {
               type: 'command',
-              command:
-                'npx -y @sylphie-labs/memory-pkg ingest && npx -y @sylphie-labs/memory-pkg rationale --limit 20',
+              command: 'npx -y @sylphie-labs/memory-pkg consolidate',
               timeout: 120,
               async: true,
             },

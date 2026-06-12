@@ -37,6 +37,16 @@ export function getPool(): pg.Pool {
     _pool.on('error', (err) => {
       process.stderr.write(`[memory-pkg] pool error: ${err.message}\n`);
     });
+
+    // Lower the word_similarity threshold so the `<%` operator (used by the
+    // trigram/entity tiers, and GIN-indexable via idx_memory_trgm) matches our
+    // 0.2 retrieval floor instead of the strict 0.6 default. Queued on the
+    // per-client query pipeline at connect time, so it lands before any tier
+    // query on that connection. Best-effort: a failure just falls back to the
+    // explicit `word_similarity(...) >= 0.2` recheck the tiers also carry.
+    _pool.on('connect', (client) => {
+      client.query('SET pg_trgm.word_similarity_threshold = 0.2').catch(() => {});
+    });
   }
   return _pool;
 }
