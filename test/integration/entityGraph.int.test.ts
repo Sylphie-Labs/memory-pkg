@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
 import { createTestDb, seedEvents, withEnvAsync, type TestDb } from '../helpers/db.js';
 import { closePool, runQuery } from '../../src/timescale-client.js';
 import { runConsolidation } from '../../src/consolidate/runner.js';
@@ -17,6 +20,7 @@ import { entityLinkProcessor } from '../../src/consolidate/processors/entity-lin
 import { entityTier } from '../../src/inject/tiers/entity.js';
 
 let db: TestDb | undefined;
+let project: string;
 
 const UP_ID = '11111111-1111-1111-1111-111111111111';
 const TOOLCALL_ID = '22222222-2222-2222-2222-222222222222';
@@ -29,7 +33,8 @@ beforeAll(async () => {
   } catch {
     return;
   }
-  await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1' }, async () => {
+  project = mkdtempSync(path.join(tmpdir(), 'mpkg-eg-'));
+  await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1', CLAUDE_PROJECT_DIR: project }, async () => {
     await closePool();
     await seedEvents(db!.env, [
       {
@@ -69,13 +74,14 @@ beforeAll(async () => {
 afterAll(async () => {
   await closePool();
   await db?.drop();
+  if (project) rmSync(project, { recursive: true, force: true });
 });
 
 describe('entity graph (Phase 3)', () => {
   it('entity-link populates memory_entities and links from event text', async (ctx) => {
     if (!db) return ctx.skip();
     await closePool();
-    await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1' }, async () => {
+    await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1', CLAUDE_PROJECT_DIR: project }, async () => {
       const r = await runConsolidation({ deep: true, processors: [entityLinkProcessor] });
       expect(r.ran).toBe(true);
 
@@ -101,7 +107,7 @@ describe('entity graph (Phase 3)', () => {
   it('one-hop recall: querying FilterBar surfaces the unrelated-by-text rationale', async (ctx) => {
     if (!db) return ctx.skip();
     await closePool();
-    await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1' }, async () => {
+    await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1', CLAUDE_PROJECT_DIR: project }, async () => {
       // Ensure the graph is linked (idempotent if the prior test already ran).
       await runConsolidation({ deep: true, processors: [entityLinkProcessor] });
 
@@ -122,7 +128,7 @@ describe('entity graph (Phase 3)', () => {
   it('is idempotent: a second entity-link pass adds no duplicate links', async (ctx) => {
     if (!db) return ctx.skip();
     await closePool();
-    await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1' }, async () => {
+    await withEnvAsync({ ...db.env, MEMORY_PKG_EMBED_FAKE: '1', CLAUDE_PROJECT_DIR: project }, async () => {
       await runConsolidation({ deep: true, processors: [entityLinkProcessor] });
       const before = await runQuery<{ n: string }>(`SELECT count(*)::text AS n FROM memory_entity_events`);
       await runConsolidation({ deep: true, processors: [entityLinkProcessor] });

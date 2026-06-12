@@ -35,6 +35,10 @@ const DEFAULT_WEIGHTS: Record<string, number> = {
   trigram: 0.2,
   entity: 0.3,
   embedding: 0.3,
+  // Facts are single-tier (no other tier produces a fact_id), so the weighted
+  // average leaves their score as-is; the "facts outrank events at equal score"
+  // tie-break is applied in generate.ts. The weight is here for completeness.
+  facts: 0.35,
 };
 
 export function loadMergerConfig(): MergerConfig {

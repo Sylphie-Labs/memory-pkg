@@ -16,7 +16,7 @@ import { runQuery, closePool } from './timescale-client.js';
  * hypertable, subsystem, embedding, transcript_uuid unique index, memory_meta
  * itself).
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const STATEMENTS: Array<{ label: string; sql: string }> = [
   {
@@ -229,6 +229,36 @@ const STATEMENTS: Array<{ label: string; sql: string }> = [
         updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `,
+  },
+
+  // --- Schema v4 (0.10.0): the curated hot tier -------------------------------
+  // Distilled facts promoted from high-usefulness entity clusters. Plain,
+  // mutable, consolidation-owned (the append-only discipline protects the
+  // hypertable; facts are derived state, low-volume, and need supersession).
+  {
+    label: 'table: memory_facts',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memory_facts (
+        fact_id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        cluster_key        TEXT NOT NULL,
+        fact_text          TEXT NOT NULL,
+        search_text        TEXT NOT NULL,
+        source_event_ids   UUID[] NOT NULL,
+        derived_through_ts TIMESTAMPTZ NOT NULL,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        status             TEXT NOT NULL DEFAULT 'active',
+        superseded_by      UUID
+      );
+    `,
+  },
+  {
+    // One active fact per cluster.
+    label: 'unique: one active fact per cluster',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_active_cluster ON memory_facts (cluster_key) WHERE status = 'active';`,
+  },
+  {
+    label: 'index: facts search_text trigram',
+    sql: `CREATE INDEX IF NOT EXISTS idx_facts_trgm ON memory_facts USING GIN (search_text gin_trgm_ops);`,
   },
 ];
 

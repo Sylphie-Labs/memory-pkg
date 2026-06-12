@@ -81,6 +81,24 @@ async function strongCandidates(norms: string[], sessionId: string | undefined):
   );
 }
 
+interface FactRow {
+  fact_id: string;
+  fact_text: string;
+  cluster_key: string;
+}
+
+async function factsForEntities(norms: string[]): Promise<FactRow[]> {
+  try {
+    return await runQuery<FactRow>(
+      `SELECT fact_id, fact_text, cluster_key FROM memory_facts
+       WHERE status = 'active' AND cluster_key = ANY($1::text[])`,
+      [norms],
+    );
+  } catch {
+    return []; // pre-v4 schema
+  }
+}
+
 async function knownEntities(norms: string[]): Promise<string[]> {
   const rows = await runQuery<{ name_norm: string }>(
     `SELECT name_norm FROM memory_entities WHERE name_norm = ANY($1::text[])`,
@@ -102,6 +120,27 @@ export async function runAmbient(): Promise<void> {
   const norms = [...new Set((input.entities ?? []).map(normalizeEntity).filter(Boolean))];
   if (norms.length === 0) {
     process.stdout.write(JSON.stringify({ text: '', injected: false }));
+    return;
+  }
+
+  // Curated facts win: a fact about an entity the agent just touched is the
+  // highest-value thing we can inject.
+  const facts = await factsForEntities(norms);
+  if (facts.length > 0) {
+    const picked = facts.slice(0, MAX_ITEMS);
+    const injectionId = await recordInjection({
+      sessionId: input.session_id ?? null,
+      trigger: 'ambient',
+      queryOrEntity: norms.join(','),
+      items: picked.map((f) => ({ item_id: f.fact_id, item_kind: 'fact' as const, summary120: f.fact_text.slice(0, 120) })),
+      charsInjected: picked.reduce((n, f) => n + f.fact_text.length, 0),
+    });
+    const body = picked.map((f) => `### fact · ${f.cluster_key}\n> ${f.fact_text.replace(/\n/g, '\n> ')}\n`).join('\n');
+    const text =
+      `<ambient-memory source="background" injection: ${injectionId}>\n` +
+      `Curated facts about what you're exploring (${norms.join(', ')}). Reference only.\n\n` +
+      `${body}</ambient-memory>`;
+    process.stdout.write(JSON.stringify({ text, injected: true }));
     return;
   }
 

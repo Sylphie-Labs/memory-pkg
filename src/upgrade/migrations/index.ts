@@ -23,6 +23,7 @@ import migration_0_5_1_to_0_6_0 from './0.5.1-to-0.6.0.js';
 import migration_0_6_0_to_0_7_0 from './0.6.0-to-0.7.0.js';
 import migration_0_7_0_to_0_8_0 from './0.7.0-to-0.8.0.js';
 import migration_0_8_0_to_0_9_0 from './0.8.0-to-0.9.0.js';
+import migration_0_9_0_to_0_10_0 from './0.9.0-to-0.10.0.js';
 
 // Add migrations here as new versions ship.
 
@@ -38,6 +39,7 @@ export const MIGRATIONS: Migration[] = [
   migration_0_6_0_to_0_7_0,
   migration_0_7_0_to_0_8_0,
   migration_0_8_0_to_0_9_0,
+  migration_0_9_0_to_0_10_0,
 ];
 
 export type { Migration, MigrationContext, MigrationResult, MigrationSeverity } from './types.js';

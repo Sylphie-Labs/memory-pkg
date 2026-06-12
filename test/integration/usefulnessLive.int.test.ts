@@ -7,6 +7,9 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
 import { createTestDb, seedEvents, withEnvAsync, type TestDb } from '../helpers/db.js';
 import { closePool, runQuery } from '../../src/timescale-client.js';
 import { generateInjection } from '../../src/inject/generate.js';
@@ -15,13 +18,16 @@ import { ratingMeanProcessor } from '../../src/consolidate/processors/rating-mea
 import { getMeta } from '../../src/consolidate/meta.js';
 
 let db: TestDb | undefined;
+let project: string;
 
 const A = '77777777-aaaa-7777-aaaa-777777777777'; // higher ts, NEGATIVE ratings
 const B = '88888888-bbbb-8888-bbbb-888888888888'; // lower ts, POSITIVE ratings
 const ST = 'the GammaWidget reset flow handler';
 
 function env(): Record<string, string> {
-  return { ...db!.env, MEMORY_PKG_EMBED_FAKE: '1' };
+  // Unique CLAUDE_PROJECT_DIR so runConsolidation's lock is per-file (parallel
+  // suites must not contend on a shared consolidate.lock).
+  return { ...db!.env, MEMORY_PKG_EMBED_FAKE: '1', CLAUDE_PROJECT_DIR: project };
 }
 
 beforeAll(async () => {
@@ -30,6 +36,7 @@ beforeAll(async () => {
   } catch {
     return;
   }
+  project = mkdtempSync(path.join(tmpdir(), 'mpkg-ul-'));
   await withEnvAsync(env(), async () => {
     await closePool();
     await seedEvents(db!.env, [
@@ -51,6 +58,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await closePool();
   await db?.drop();
+  if (project) rmSync(project, { recursive: true, force: true });
 });
 
 describe('usefulness multiplier live (Phase 6)', () => {

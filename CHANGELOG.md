@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-06-12
+
+Phase 7 — the final phase of the ambient-memory arc: the **curated hot tier** (schema v4). High-usefulness entity clusters are distilled into facts that are served as a fast-path tier above raw events.
+
+### Added
+- **`memory_facts`** (schema v4) — distilled facts (1–3 synthesized sentences) promoted from entity clusters whose memories are rated useful. Plain, mutable, consolidation-owned; a partial unique index enforces one active fact per cluster.
+- **Facts retrieval tier** — trigram over fact text plus exact `cluster_key` (entity) match, active facts only. Registered in the fast path; a curated fact **outranks a raw event at equal score** (tie-break in the orchestrator). Fails soft to empty on a pre-v4 schema, so a package upgrade ahead of `memory-pkg schema` never breaks injection. Disable via `DRIFT_MEMORY_TIER_FACTS_DISABLED=1`. The ambient hook checks facts first.
+- **`facts-promote`** (deep) — clusters entities with ≥3 blended ratings and mean ≥+0.6, gathers their top rationale/assistant_text excerpts, synthesizes a fact via the shared `claude -p` helper (injectable for tests), and stores it. Idempotent (skips a cluster whose active fact already covers its newest event); re-promotion supersedes the prior fact in a transaction.
+- **`facts-staleness`** (deep) — retires a fact when its cluster's blended mean falls below +0.2 or the fact's own ratings go net-negative. Retired/superseded facts are never injected. Facts are themselves rateable (`item_kind='fact'`), flowing through the whole feedback pipeline unchanged.
+- The `claude -p` shell-out is extracted to `src/llm/claude-cli.ts`, shared by rationale synthesis and fact promotion.
+
+### Migration
+- `0.9.0 → 0.10.0` creates `memory_facts` and its indexes (frozen idempotent DDL; degrades to a warning if the DB is unreachable). Stamps `schema_version=4`.
+
 ## [0.9.0] — 2026-06-12
 
 Phase 6 of the ambient-memory arc: the usefulness multiplier can now go **live** — gated, opt-in, and measured first.

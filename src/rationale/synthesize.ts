@@ -12,12 +12,10 @@
  * Idempotent: skips turns that already have a turn_rationale event.
  */
 
-import { spawn } from 'child_process';
 import * as path from 'path';
 import { runQuery } from '../timescale-client.js';
 import { getModelFor } from '../config.js';
-
-const CLAUDE_BIN = process.env.MEMORY_PKG_CLAUDE_BIN ?? 'claude';
+import { callClaudeCli } from '../llm/claude-cli.js';
 
 // Project name for the rationale prompt, derived from the consumer repo
 // directory. CLAUDE_PROJECT_DIR is set by the Claude Code hook; fall back
@@ -153,61 +151,6 @@ In 2–3 sentences, write a rationale for this turn — the "why" behind Claude'
 3. Any constraint or prior decision that drove the choice
 
 Write in present tense, first-person plural ("we"), as if preparing a note for a future session to find via fuzzy search. Do not preamble. Output only the 2–3 sentences.`;
-}
-
-/**
- * Invokes the local `claude` CLI in print mode with the prompt on stdin.
- * Uses the user's authenticated Max account — no API key involved.
- */
-async function callClaudeCli(prompt: string, timeoutMs = 60_000): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    // `-p` = print (one-shot, non-interactive). `--model` selects Haiku.
-    // Prompt passes via stdin so we avoid shell-quoting issues with multi-line content.
-    const proc = spawn(CLAUDE_BIN, ['-p', '--model', getModelFor('rationale')], {
-      shell: false,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-    let settled = false;
-
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      proc.kill('SIGTERM');
-      reject(new Error(`claude CLI timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString('utf8'); });
-    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString('utf8'); });
-
-    proc.on('error', (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      reject(new Error(`failed to spawn ${CLAUDE_BIN}: ${err.message}`));
-    });
-
-    proc.on('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      if (code !== 0) {
-        reject(new Error(`claude CLI exited ${code}. stderr: ${stderr.slice(0, 500)}`));
-        return;
-      }
-      const text = stdout.trim();
-      if (!text) {
-        reject(new Error('claude CLI returned empty output'));
-        return;
-      }
-      resolve(text);
-    });
-
-    proc.stdin.write(prompt);
-    proc.stdin.end();
-  });
 }
 
 async function insertRationale(turn: Turn, rationale: string): Promise<void> {

@@ -132,6 +132,25 @@ async function fetchEventsByIds(ids: string[]): Promise<Map<string, EventRow>> {
   return new Map(rows.map((r) => [r.event_id, r]));
 }
 
+/** Resolve fact_ids from memory_facts into the EventRow shape (event_type
+ * 'fact'). Empty on any error (pre-v4 schema) so injection never breaks. */
+async function fetchFactsByIds(ids: string[]): Promise<Map<string, EventRow>> {
+  if (ids.length === 0) return new Map();
+  try {
+    const rows = await runQuery<EventRow>(
+      `SELECT fact_id AS event_id, created_at AS ts, NULL::text AS session_id,
+              'fact' AS event_type, NULL::text AS tool_name, NULL::text AS file_path,
+              fact_text AS excerpt, fact_text AS summary
+       FROM memory_facts
+       WHERE fact_id = ANY($1::uuid[]) AND status = 'active'`,
+      [ids],
+    );
+    return new Map(rows.map((r) => [r.event_id, r]));
+  } catch {
+    return new Map();
+  }
+}
+
 /** Per-item usefulness stats for the shadow multiplier. Empty on any error
  * (pre-v3 schema / DB down) so injection never depends on the feedback tables. */
 async function fetchStats(ids: string[]): Promise<Map<string, EventStats>> {
@@ -208,7 +227,9 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
     return '';
   }
 
-  const rows = await fetchEventsByIds(merged.map((c) => c.event_id));
+  const allIds = merged.map((c) => c.event_id);
+  const [eventRows, factRows] = await Promise.all([fetchEventsByIds(allIds), fetchFactsByIds(allIds)]);
+  const rows = new Map<string, EventRow>([...eventRows, ...factRows]);
 
   // Usefulness multiplier. Computed from rating history; recorded as shadow on
   // every persisted injection, and — only when MEMORY_PKG_USEFULNESS_LIVE — also
@@ -295,7 +316,11 @@ export async function generateInjection(opts: GenerateInjectionOptions): Promise
 
   ranked.sort((a, b) => {
     if (b.relevance !== a.relevance) return b.relevance - a.relevance;
-    return b.candidate.score - a.candidate.score;
+    if (b.candidate.score !== a.candidate.score) return b.candidate.score - a.candidate.score;
+    // Tie-break: a curated fact outranks a raw event at equal score.
+    const af = a.row.event_type === 'fact' ? 1 : 0;
+    const bf = b.row.event_type === 'fact' ? 1 : 0;
+    return bf - af;
   });
 
   // Per-type diversity cap (disabled by default — set DRIFT_MEMORY_DIVERSITY_PER_TYPE).

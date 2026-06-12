@@ -11,6 +11,7 @@ import type { Tier } from './types.js';
 import { trigramTier } from './trigram.js';
 import { entityTier } from './entity.js';
 import { embeddingTier } from './embedding.js';
+import { factsTier } from './facts.js';
 
 export * from './types.js';
 
@@ -20,7 +21,7 @@ export * from './types.js';
 // load is paid rarely rather than on every prompt.
 
 export function getFastPathTiers(): Tier[] {
-  return [trigramTier, entityTier];
+  return [trigramTier, entityTier, factsTier];
 }
 
 export function getRescueTiers(): Tier[] {
