@@ -1,0 +1,64 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/memory-inject.cjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/memory-capture.cjs",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/memory-rate.cjs",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "npx -y @sylphie-labs/memory-pkg consolidate",
+            "timeout": 120,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y @sylphie-labs/memory-pkg consolidate --deep --if-stale 24",
+            "timeout": 600,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Grep|Glob|Read|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/memory-ambient.cjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

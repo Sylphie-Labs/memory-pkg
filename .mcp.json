@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "memory-pkg": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "--package",
+        "@sylphie-labs/memory-pkg",
+        "memory-pkg-mcp"
+      ],
+      "env": {}
+    }
+  }
+}

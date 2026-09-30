@@ -1,0 +1,133 @@
+{"ts":"2026-06-12T19:02:51.085Z","kind":"deep","line":"entity-link processed=2 skipped=1 exhausted=true"}
+{"ts":"2026-06-12T19:02:51.104Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:02:51.119Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:02:51.123Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:03:38.967Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:03:38.982Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:03:38.998Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:03:39.001Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:03:57.597Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:03:57.619Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:03:57.638Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:03:57.643Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:05:30.073Z","kind":"deep","line":"entity-link processed=1242 skipped=270 exhausted=true"}
+{"ts":"2026-06-12T19:06:46.784Z","kind":"deep","line":"entity-link processed=877 skipped=635 exhausted=true"}
+{"ts":"2026-06-12T19:07:09.945Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:07:09.963Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:07:09.983Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:07:09.988Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:16:51.422Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:16:51.443Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:16:51.472Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:16:51.477Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:25:56.858Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:25:56.884Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:25:56.915Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:25:56.922Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:30:18.450Z","kind":"deep","line":"rating-mean mu=0.3333 (n=3)"}
+{"ts":"2026-06-12T19:30:39.414Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:30:39.434Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:30:39.458Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:30:39.466Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:30:39.539Z","kind":"deep","line":"rating-mean mu=0.3333 (n=3)"}
+{"ts":"2026-06-12T19:37:07.389Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:37:07.424Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:37:07.460Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:37:07.466Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:37:07.489Z","kind":"deep","line":"rating-mean mu=0.3333 (n=3)"}
+{"ts":"2026-06-12T19:38:06.897Z","kind":"deep","line":"entity-link processed=1 skipped=1 exhausted=true"}
+{"ts":"2026-06-12T19:38:06.906Z","kind":"deep","line":"facts-promote promoteme -> 122145e8"}
+{"ts":"2026-06-12T19:38:06.927Z","kind":"deep","line":"entity-link processed=1 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:38:06.934Z","kind":"deep","line":"facts-promote promoteme -> 508afae3"}
+{"ts":"2026-06-12T19:38:06.940Z","kind":"deep","line":"facts-staleness retired=2"}
+{"ts":"2026-06-12T19:38:26.481Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:38:26.506Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:38:26.536Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:38:26.543Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:38:26.603Z","kind":"deep","line":"entity-link processed=1 skipped=1 exhausted=true"}
+{"ts":"2026-06-12T19:38:26.618Z","kind":"deep","line":"facts-promote promoteme -> aa099b40"}
+{"ts":"2026-06-12T19:38:26.657Z","kind":"deep","line":"entity-link processed=1 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:38:26.667Z","kind":"deep","line":"facts-promote promoteme -> 62806ec2"}
+{"ts":"2026-06-12T19:38:26.676Z","kind":"deep","line":"facts-staleness retired=2"}
+{"ts":"2026-06-12T19:38:41.334Z","kind":"deep","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T19:38:41.365Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:38:41.392Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T19:38:41.399Z","kind":"deep","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T20:27:10.258Z","kind":"tick","line":"ingest-flush inserted=0"}
+{"ts":"2026-06-12T20:27:10.299Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T20:27:11.259Z","kind":"tick","line":"entity-link processed=326 skipped=160 exhausted=true"}
+{"ts":"2026-06-12T20:27:11.261Z","kind":"tick","line":"stats-fold recomputed=0 scope=7d"}
+{"ts":"2026-06-12T20:27:35.869Z","kind":"tick","line":"ingest-flush inserted=20"}
+{"ts":"2026-06-12T20:27:35.892Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T20:27:35.941Z","kind":"tick","line":"entity-link processed=8 skipped=6 exhausted=true"}
+{"ts":"2026-06-12T20:27:35.943Z","kind":"tick","line":"stats-fold recomputed=0 scope=7d"}
+{"ts":"2026-06-12T20:30:39.776Z","kind":"tick","line":"ingest-flush inserted=0"}
+{"ts":"2026-06-12T20:30:39.812Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T20:30:39.817Z","kind":"tick","line":"entity-link processed=0 skipped=0 exhausted=true"}
+{"ts":"2026-06-12T20:30:39.821Z","kind":"tick","line":"stats-fold recomputed=6 scope=7d"}
+{"ts":"2026-06-12T20:31:08.767Z","kind":"tick","line":"ingest-flush inserted=13"}
+{"ts":"2026-06-12T20:31:08.789Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T20:31:08.835Z","kind":"tick","line":"entity-link processed=6 skipped=3 exhausted=true"}
+{"ts":"2026-06-12T20:31:08.837Z","kind":"tick","line":"stats-fold recomputed=6 scope=7d"}
+{"ts":"2026-06-12T20:39:48.530Z","kind":"tick","line":"ingest-flush inserted=67"}
+{"ts":"2026-06-12T20:39:48.556Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T20:39:48.678Z","kind":"tick","line":"entity-link processed=30 skipped=11 exhausted=true"}
+{"ts":"2026-06-12T20:39:48.680Z","kind":"tick","line":"stats-fold recomputed=6 scope=7d"}
+{"ts":"2026-06-12T20:53:20.281Z","kind":"tick","line":"ingest-flush inserted=23"}
+{"ts":"2026-06-12T20:53:20.311Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T20:53:20.346Z","kind":"tick","line":"entity-link processed=5 skipped=9 exhausted=true"}
+{"ts":"2026-06-12T20:53:20.349Z","kind":"tick","line":"stats-fold recomputed=6 scope=7d"}
+{"ts":"2026-06-12T21:08:58.548Z","kind":"tick","line":"ingest-flush inserted=4"}
+{"ts":"2026-06-12T21:08:58.582Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:08:58.598Z","kind":"tick","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T21:08:58.601Z","kind":"tick","line":"stats-fold recomputed=6 scope=7d"}
+{"ts":"2026-06-12T21:09:10.250Z","kind":"tick","line":"ingest-flush inserted=6"}
+{"ts":"2026-06-12T21:09:10.281Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:09:10.306Z","kind":"tick","line":"entity-link processed=3 skipped=1 exhausted=true"}
+{"ts":"2026-06-12T21:09:10.308Z","kind":"tick","line":"stats-fold recomputed=8 scope=7d"}
+{"ts":"2026-06-12T21:10:35.149Z","kind":"tick","line":"ingest-flush inserted=2"}
+{"ts":"2026-06-12T21:10:35.171Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:10:35.194Z","kind":"tick","line":"entity-link processed=1 skipped=1 exhausted=true"}
+{"ts":"2026-06-12T21:10:35.196Z","kind":"tick","line":"stats-fold recomputed=8 scope=7d"}
+{"ts":"2026-06-12T21:14:59.597Z","kind":"tick","line":"ingest-flush inserted=20"}
+{"ts":"2026-06-12T21:14:59.625Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:14:59.674Z","kind":"tick","line":"entity-link processed=7 skipped=5 exhausted=true"}
+{"ts":"2026-06-12T21:14:59.676Z","kind":"tick","line":"stats-fold recomputed=8 scope=7d"}
+{"ts":"2026-06-12T21:30:46.395Z","kind":"tick","line":"ingest-flush inserted=8"}
+{"ts":"2026-06-12T21:30:46.411Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:30:46.440Z","kind":"tick","line":"entity-link processed=1 skipped=6 exhausted=true"}
+{"ts":"2026-06-12T21:30:46.443Z","kind":"tick","line":"stats-fold recomputed=8 scope=7d"}
+{"ts":"2026-06-12T21:50:21.576Z","kind":"tick","line":"ingest-flush inserted=17"}
+{"ts":"2026-06-12T21:50:21.599Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:50:21.641Z","kind":"tick","line":"entity-link processed=6 skipped=5 exhausted=true"}
+{"ts":"2026-06-12T21:50:21.643Z","kind":"tick","line":"stats-fold recomputed=8 scope=7d"}
+{"ts":"2026-06-12T21:50:45.300Z","kind":"tick","line":"ingest-flush inserted=4"}
+{"ts":"2026-06-12T21:50:45.330Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:50:45.344Z","kind":"tick","line":"entity-link processed=1 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T21:50:45.346Z","kind":"tick","line":"stats-fold recomputed=11 scope=7d"}
+{"ts":"2026-06-12T21:57:41.058Z","kind":"tick","line":"ingest-flush inserted=11"}
+{"ts":"2026-06-12T21:57:41.087Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T21:57:41.121Z","kind":"tick","line":"entity-link processed=5 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T21:57:41.124Z","kind":"tick","line":"stats-fold recomputed=11 scope=7d"}
+{"ts":"2026-06-12T22:09:28.872Z","kind":"tick","line":"ingest-flush inserted=91"}
+{"ts":"2026-06-12T22:09:28.904Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T22:09:29.136Z","kind":"tick","line":"entity-link processed=50 skipped=5 exhausted=true"}
+{"ts":"2026-06-12T22:09:29.138Z","kind":"tick","line":"stats-fold recomputed=11 scope=7d"}
+{"ts":"2026-06-12T22:10:44.350Z","kind":"tick","line":"ingest-flush inserted=14"}
+{"ts":"2026-06-12T22:10:44.382Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T22:10:44.450Z","kind":"tick","line":"entity-link processed=7 skipped=3 exhausted=true"}
+{"ts":"2026-06-12T22:10:44.453Z","kind":"tick","line":"stats-fold recomputed=11 scope=7d"}
+{"ts":"2026-06-12T22:17:24.827Z","kind":"tick","line":"ingest-flush inserted=5"}
+{"ts":"2026-06-12T22:17:24.859Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-12T22:17:24.891Z","kind":"tick","line":"entity-link processed=2 skipped=2 exhausted=true"}
+{"ts":"2026-06-12T22:17:24.894Z","kind":"tick","line":"stats-fold recomputed=11 scope=7d"}
+{"ts":"2026-06-13T00:30:28.223Z","kind":"tick","line":"ingest-flush inserted=70"}
+{"ts":"2026-06-13T00:30:28.279Z","kind":"tick","line":"rationale synthesized=0 skipped=3"}
+{"ts":"2026-06-13T00:30:28.523Z","kind":"tick","line":"entity-link processed=33 skipped=11 exhausted=true"}
+{"ts":"2026-06-13T00:30:28.526Z","kind":"tick","line":"stats-fold recomputed=11 scope=7d"}
+{"ts":"2026-06-14T20:06:55.483Z","kind":"deep","line":"orphan-sweep recovered 1 event(s) from 00fb5321-c1c9-421c-8037-e12677e34e1a"}
+{"ts":"2026-06-14T20:06:55.494Z","kind":"deep","line":"orphan-sweep recovered 1 event(s) from 4b0ad6cb-6301-4724-8bbe-452a9d293f9f"}
+{"ts":"2026-06-14T20:06:55.516Z","kind":"deep","line":"orphan-sweep recovered 363 event(s) from 514cf9a3-4aef-41fc-b221-391255822893"}
+{"ts":"2026-06-14T20:06:55.540Z","kind":"deep","line":"orphan-sweep recovered 171 event(s) from a7144858-f2b2-49f5-99a0-bee335a030f5"}
+{"ts":"2026-06-14T20:06:55.559Z","kind":"deep","line":"orphan-sweep recovered 403 event(s) from d90e6039-10e9-47de-a90a-205a62885709"}
+{"ts":"2026-06-14T20:07:21.996Z","kind":"deep","line":"ingest-flush inserted=939"}
